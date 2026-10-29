@@ -57,7 +57,10 @@ def test_provider_public_key_verification(monkeypatch):
     from cryptography.hazmat.primitives.asymmetric import ec
 
     key = ec.generate_private_key(ec.SECP256R1())
-    app = create_app({"SUPABASE_URL": "https://test.supabase.co", "JWT_SECRET": ""})
+    app = create_app({
+        "TESTING": True, "DATABASE_URL": "sqlite:///:memory:",
+        "SUPABASE_URL": "https://test.supabase.co", "JWT_SECRET": "",
+    })
     monkeypatch.setattr(app.extensions["supabase_jwks"], "get_signing_key_from_jwt",
                         lambda token: SimpleNamespace(key=key.public_key()))
     claims = {"sub": "provider-user", "iss": "https://test.supabase.co/auth/v1",

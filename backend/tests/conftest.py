@@ -12,6 +12,7 @@ def client(tmp_path):
     from app.models import Base
 
     app = create_app({
+        "TESTING": True,
         "JWT_SECRET": SECRET, "SUPABASE_URL": "https://test.supabase.co",
         "DATABASE_URL": f"sqlite:///{tmp_path / 'test.db'}",
     })

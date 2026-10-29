@@ -15,9 +15,7 @@ def create_app(config=None):
     app = Flask(__name__)
     app.config["JWT_SECRET"] = os.environ.get("SUPABASE_JWT_SECRET", "")
     app.config["SUPABASE_URL"] = os.environ.get("SUPABASE_URL", "").rstrip("/")
-    app.config["DATABASE_URL"] = os.environ.get("DATABASE_URL") or (
-        f"sqlite:///{Path(app.instance_path) / 'reviewlens.db'}"
-    )
+    app.config["DATABASE_URL"] = os.environ.get("DATABASE_URL", "")
     if config:
         app.config.update(config)
     url = app.config["SUPABASE_URL"]
