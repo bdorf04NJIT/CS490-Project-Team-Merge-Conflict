@@ -1,4 +1,4 @@
 flask
-pyjwt
+pyjwt[crypto]
 python-dotenv
 pytest
