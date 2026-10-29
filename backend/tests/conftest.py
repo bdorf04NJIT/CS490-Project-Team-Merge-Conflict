@@ -8,7 +8,7 @@ SECRET = "test-secret-at-least-32-bytes-long!!"
 
 @pytest.fixture
 def client():
-    return create_app({"JWT_SECRET": SECRET}).test_client()
+    return create_app({"JWT_SECRET": SECRET, "SUPABASE_URL": "https://test.supabase.co"}).test_client()
 
 
 @pytest.fixture
@@ -20,6 +20,7 @@ def auth_header():
             {
                 "sub": user_id,
                 "aud": "authenticated",
+                "iss": "https://test.supabase.co/auth/v1",
                 "exp": int(time.time()) + expires_in,
             },
             secret,
