@@ -2,3 +2,5 @@ flask
 pyjwt[crypto]
 python-dotenv
 pytest
+SQLAlchemy>=2.0,<3
+psycopg[binary]>=3.2,<4

@@ -51,9 +51,10 @@ def test_required_claims_and_bearer_scheme(client, auth_header):
 def test_provider_public_key_verification(monkeypatch):
     import time
     from types import SimpleNamespace
+
     import jwt
-    from cryptography.hazmat.primitives.asymmetric import ec
     from app import create_app
+    from cryptography.hazmat.primitives.asymmetric import ec
 
     key = ec.generate_private_key(ec.SECP256R1())
     app = create_app({"SUPABASE_URL": "https://test.supabase.co", "JWT_SECRET": ""})

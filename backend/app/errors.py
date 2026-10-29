@@ -20,6 +20,12 @@ class NotFound(AppError):
     message = "Not found."
 
 
+class ValidationError(AppError):
+    status = 400
+    code = "VALIDATION_ERROR"
+    message = "Provide only name, platform, and a valid HTTP(S) source_url. Ownership is assigned automatically."
+
+
 def _body(code, message):
     return jsonify(error={"code": code, "message": message})
 
