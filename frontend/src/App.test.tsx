@@ -34,7 +34,7 @@ test('signs in through the SDK and sends the provider token to Flask', async () 
   await userEvent.type(screen.getByLabelText('Password'), 'test-password')
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
   expect(auth.signInWithPassword).toHaveBeenCalledWith({ email: 'user@example.com', password: 'test-password' })
-  expect(await screen.findByText('ReviewLens user ID: verified-user')).toBeTruthy()
+  expect(await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeTruthy()
   expect(fetch).toHaveBeenCalledWith('/api/me', expect.objectContaining({
     headers: { Authorization: 'Bearer provider-token' },
   }))
@@ -47,11 +47,11 @@ test('restores an existing session and logs out without retaining identity', asy
   })
   auth.signOut.mockResolvedValue({ error: null })
   render(<App />)
-  await screen.findByText('ReviewLens user ID: verified-user')
+  await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })
   await userEvent.click(screen.getByRole('button', { name: 'Log out' }))
   expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' })
   expect(await screen.findByLabelText('Password')).toBeTruthy()
-  expect(screen.queryByText(/verified-user/)).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeNull()
 })
 
 test('failed login stays signed out and displays an error', async () => {
@@ -72,27 +72,27 @@ test('backend rejection does not display a verified identity', async () => {
   })
   render(<App />)
   await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Unable to verify'))
-  expect(screen.queryByText(/ReviewLens user ID:/)).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeNull()
 })
 
 test('uses refreshed tokens and clears identity after an external sign-out', async () => {
   render(<App />)
   act(() => notify('SIGNED_IN', session))
-  await screen.findByText('ReviewLens user ID: verified-user')
+  await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })
   act(() => notify('TOKEN_REFRESHED', { ...session, access_token: 'refreshed-token' }))
   await waitFor(() => expect(fetch).toHaveBeenLastCalledWith('/api/me', expect.objectContaining({
     headers: { Authorization: 'Bearer refreshed-token' },
   })))
   act(() => notify('SIGNED_OUT', null))
   expect(screen.getByLabelText('Password')).toBeTruthy()
-  expect(screen.queryByText(/ReviewLens user ID:/)).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeNull()
 })
 
 test('failed logout reports an error and keeps the session available', async () => {
   auth.signOut.mockResolvedValue({ error: new Error('offline') })
   render(<App />)
   act(() => notify('SIGNED_IN', session))
-  await screen.findByText('ReviewLens user ID: verified-user')
+  await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })
   await userEvent.click(screen.getByRole('button', { name: 'Log out' }))
   expect((await screen.findByRole('alert')).textContent).toContain('Unable to sign out')
   expect(screen.getByRole('button', { name: 'Log out' })).toBeTruthy()
@@ -120,7 +120,7 @@ test('registration requiring confirmation returns to login without backend acces
   await userEvent.type(screen.getByLabelText('Email'), 'new@example.com')
   await userEvent.type(screen.getByLabelText('Password'), 'new-password')
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-  expect(await screen.findByText('ReviewLens user ID: verified-user')).toBeTruthy()
+  expect(await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeTruthy()
 })
 
 test('registration signs in immediately when Supabase returns a session', async () => {
@@ -133,7 +133,7 @@ test('registration signs in immediately when Supabase returns a session', async 
   await userEvent.type(screen.getByLabelText('Email'), 'user@example.com')
   await userEvent.type(screen.getByLabelText('Password'), 'new-password')
   await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
-  expect(await screen.findByText('ReviewLens user ID: verified-user')).toBeTruthy()
+  expect(await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeTruthy()
   expect(screen.queryByText(/Check your email/)).toBeNull()
 })
 

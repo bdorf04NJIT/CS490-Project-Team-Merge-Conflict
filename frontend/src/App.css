@@ -1,8 +1,0 @@
-.auth-panel { max-width: 28rem; margin: 4rem auto; padding: 2rem; background: white; border: 1px solid #d9dfe8; border-radius: 8px; }
-form { display: grid; gap: .75rem; }
-input, button { padding: .75rem; border: 1px solid #8290a6; border-radius: 4px; }
-button { margin-top: 1rem; cursor: pointer; }
-button:disabled { cursor: wait; opacity: .65; }
-[role="alert"] { color: #a01717; }
-p { overflow-wrap: anywhere; }
-@media (max-width: 32rem) { .auth-panel { margin: 1rem; } }
