@@ -1,8 +1,11 @@
 import os
 from pathlib import Path
+
 import jwt
 from dotenv import load_dotenv
 from flask import Flask
+
+from .database import init_database
 from .errors import register_error_handlers
 from .routes import bp
 
@@ -12,6 +15,7 @@ def create_app(config=None):
     app = Flask(__name__)
     app.config["JWT_SECRET"] = os.environ.get("SUPABASE_JWT_SECRET", "")
     app.config["SUPABASE_URL"] = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    app.config["DATABASE_URL"] = os.environ.get("DATABASE_URL", "")
     if config:
         app.config.update(config)
     url = app.config["SUPABASE_URL"]
@@ -22,5 +26,6 @@ def create_app(config=None):
         f"{url}/auth/v1/.well-known/jwks.json", timeout=5
     )
     register_error_handlers(app)
+    init_database(app)
     app.register_blueprint(bp)
     return app
