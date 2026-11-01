@@ -1,4 +1,3 @@
-// ReviewLens supports one review platform (S1-BR-012), fixed here by team configuration.
 export const PLATFORM = { id: 'google_maps', label: 'Google Maps' } as const
 
 export type AnalysisTarget = {
