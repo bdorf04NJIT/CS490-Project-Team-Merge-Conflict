@@ -29,8 +29,10 @@ def create_target(engine, *, owner_id, payload):
         session.add(target)
         session.flush()
         result = {
-            "id": target.id, "owner_id": target.owner_id,
-            "name": target.name, "platform": target.platform,
+            "id": target.id,
+            "owner_id": target.owner_id,
+            "name": target.name,
+            "platform": target.platform,
             "source_url": target.source_url,
             "created_at": target.created_at.isoformat(),
         }

@@ -11,7 +11,9 @@ def test_missing_token_returns_401(client):
 
 
 def test_bad_signature_returns_401(client, auth_header):
-    res = client.get("/api/me", headers=auth_header(secret="this_is_the_WRONG_secret_blahblahblahblah!"))
+    res = client.get(
+        "/api/me", headers=auth_header(secret="this_is_the_WRONG_secret_blahblahblahblah!")
+    )
     assert res.status_code == 401
 
 
@@ -40,11 +42,19 @@ def test_required_claims_and_bearer_scheme(client, auth_header):
         invalid = dict(claims)
         del invalid[field]
         token = jwt.encode(invalid, SECRET, algorithm="HS256")
-        assert client.get("/api/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401
-    for field, value in (("iss", "https://other.supabase.co/auth/v1"), ("aud", "other"), ("sub", "")):
+        assert (
+            client.get("/api/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+        )
+    for field, value in (
+        ("iss", "https://other.supabase.co/auth/v1"),
+        ("aud", "other"),
+        ("sub", ""),
+    ):
         invalid = {**claims, field: value}
         token = jwt.encode(invalid, SECRET, algorithm="HS256")
-        assert client.get("/api/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+        assert (
+            client.get("/api/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+        )
     assert client.get("/api/me", headers={"Authorization": original}).status_code == 401
 
 
@@ -53,18 +63,30 @@ def test_provider_public_key_verification(monkeypatch):
     from types import SimpleNamespace
 
     import jwt
-    from app import create_app
     from cryptography.hazmat.primitives.asymmetric import ec
 
+    from app import create_app
+
     key = ec.generate_private_key(ec.SECP256R1())
-    app = create_app({
-        "TESTING": True, "DATABASE_URL": "sqlite:///:memory:",
-        "SUPABASE_URL": "https://test.supabase.co", "JWT_SECRET": "",
-    })
-    monkeypatch.setattr(app.extensions["supabase_jwks"], "get_signing_key_from_jwt",
-                        lambda token: SimpleNamespace(key=key.public_key()))
-    claims = {"sub": "provider-user", "iss": "https://test.supabase.co/auth/v1",
-              "aud": "authenticated", "exp": int(time.time()) + 60}
+    app = create_app(
+        {
+            "TESTING": True,
+            "DATABASE_URL": "sqlite:///:memory:",
+            "SUPABASE_URL": "https://test.supabase.co",
+            "JWT_SECRET": "",
+        }
+    )
+    monkeypatch.setattr(
+        app.extensions["supabase_jwks"],
+        "get_signing_key_from_jwt",
+        lambda token: SimpleNamespace(key=key.public_key()),
+    )
+    claims = {
+        "sub": "provider-user",
+        "iss": "https://test.supabase.co/auth/v1",
+        "aud": "authenticated",
+        "exp": int(time.time()) + 60,
+    }
     token = jwt.encode(claims, key, algorithm="ES256")
     client = app.test_client()
     response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})

@@ -15,7 +15,8 @@ def require_auth(fn):
             raise Unauthenticated()
         try:
             claims = verify_token(
-                parts[1], current_app.config["JWT_ISSUER"],
+                parts[1],
+                current_app.config["JWT_ISSUER"],
                 current_app.extensions.get("supabase_jwks"),
                 current_app.config["JWT_SECRET"],
             )

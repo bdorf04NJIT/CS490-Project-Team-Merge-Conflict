@@ -2,6 +2,7 @@ import time
 
 import jwt
 import pytest
+
 from app import create_app
 
 SECRET = "test-secret-at-least-32-bytes-long!!"
@@ -11,11 +12,14 @@ SECRET = "test-secret-at-least-32-bytes-long!!"
 def client(tmp_path):
     from app.models import Base
 
-    app = create_app({
-        "TESTING": True,
-        "JWT_SECRET": SECRET, "SUPABASE_URL": "https://test.supabase.co",
-        "DATABASE_URL": f"sqlite:///{tmp_path / 'test.db'}",
-    })
+    app = create_app(
+        {
+            "TESTING": True,
+            "JWT_SECRET": SECRET,
+            "SUPABASE_URL": "https://test.supabase.co",
+            "DATABASE_URL": f"sqlite:///{tmp_path / 'test.db'}",
+        }
+    )
     engine = app.extensions["database"]
     Base.metadata.create_all(engine)
     yield app.test_client()
