@@ -110,7 +110,7 @@ function App() {
       {error && <p role="alert" className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800">{error}</p>}
       {!session && message && <p role="status" className="mb-5 rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm leading-6 text-indigo-900">{message}</p>}
       {loading ? <p role="status">Loading session...</p> : session ? (
-        identity ? <Home email={session.user.email} busy={busy} onLogout={() => void logout()} /> : <section>
+        identity ? <Home email={session.user.email} accessToken={session.access_token} busy={busy} onLogout={() => void logout()} /> : <section>
           {!error && <p role="status">Verifying your session...</p>}
           <button className="mt-4 rounded border border-slate-400 px-4 py-2 hover:bg-slate-100" onClick={() => void logout()} disabled={busy}>Log out</button>
         </section>
