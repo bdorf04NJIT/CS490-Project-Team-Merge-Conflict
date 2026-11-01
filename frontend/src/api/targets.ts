@@ -25,7 +25,6 @@ const MESSAGES: Record<number, string> = {
 }
 const FALLBACK = 'Unable to create the target right now. Please try again.'
 
-// Ownership is never sent: the backend assigns it from the verified token (S1-BR-010).
 export async function createTarget(accessToken: string, target: NewTarget): Promise<AnalysisTarget> {
   let response: Response
   try {
