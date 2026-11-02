@@ -1,10 +1,13 @@
+import CreateTargetForm from '../components/CreateTargetForm'
+
 type HomeProps = {
   email: string | undefined
+  accessToken: string
   busy: boolean
   onLogout: () => void
 }
 
-export default function Home({ email, busy, onLogout }: HomeProps) {
+export default function Home({ email, accessToken, busy, onLogout }: HomeProps) {
   return (
     <section aria-labelledby="home-heading">
       <h2 id="home-heading" className="text-xl font-medium">
@@ -18,6 +21,7 @@ export default function Home({ email, busy, onLogout }: HomeProps) {
       >
         Log out
       </button>
+      <CreateTargetForm accessToken={accessToken} />
     </section>
   )
 }

@@ -147,7 +147,12 @@ function App() {
         <p role="status">Loading session...</p>
       ) : session ? (
         identity ? (
-          <Home email={session.user.email} busy={busy} onLogout={() => void logout()} />
+          <Home
+            email={session.user.email}
+            accessToken={session.access_token}
+            busy={busy}
+            onLogout={() => void logout()}
+          />
         ) : (
           <section>
             {!error && <p role="status">Verifying your session...</p>}
