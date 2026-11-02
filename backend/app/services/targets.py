@@ -75,7 +75,7 @@ def validate_target(payload):
                 and not url.password
                 and " " not in source_url
             )
-            url.port  
+            _ = url.port  # invalid port numbers raise ValueError
         except ValueError:
             usable = False
         if not usable:
