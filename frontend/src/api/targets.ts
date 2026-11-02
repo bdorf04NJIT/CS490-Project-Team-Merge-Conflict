@@ -10,12 +10,16 @@ export type AnalysisTarget = {
 
 export type NewTarget = { name: string; sourceUrl: string }
 
+export type FieldErrors = Partial<Record<'name' | 'source_url' | 'platform', string>>
+
 export class TargetError extends Error {
   readonly status: number
+  readonly fields: FieldErrors
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, fields: FieldErrors = {}) {
     super(message)
     this.status = status
+    this.fields = fields
   }
 }
 
@@ -24,6 +28,20 @@ const MESSAGES: Record<number, string> = {
   401: 'Your session has expired. Please sign in again.',
 }
 const FALLBACK = 'Unable to create the target right now. Please try again.'
+
+async function readFieldErrors(response: Response): Promise<FieldErrors> {
+  try {
+    const body = await response.json()
+    const fields = body?.error?.fields ?? {}
+    const result: FieldErrors = {}
+    for (const key of ['name', 'source_url', 'platform'] as const) {
+      if (typeof fields[key] === 'string') result[key] = fields[key]
+    }
+    return result
+  } catch {
+    return {}
+  }
+}
 
 export async function createTarget(
   accessToken: string,
@@ -43,6 +61,9 @@ export async function createTarget(
   } catch {
     throw new TargetError(0, 'Unable to connect. Check your connection and try again.')
   }
-  if (!response.ok) throw new TargetError(response.status, MESSAGES[response.status] ?? FALLBACK)
+  if (!response.ok) {
+    const fields = response.status === 400 ? await readFieldErrors(response) : {}
+    throw new TargetError(response.status, MESSAGES[response.status] ?? FALLBACK, fields)
+  }
   return response.json()
 }
