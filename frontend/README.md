@@ -1,6 +1,6 @@
 # Frontend
 
-Requires Node.js 22.12+ and npm.
+Requires Node.js 22 LTS (22.22 or newer) and npm.
 
 Create `frontend/.env.local` with the values shared by the team:
 
