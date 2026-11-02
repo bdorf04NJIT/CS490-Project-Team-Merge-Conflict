@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 
 from app.models import AnalysisTarget
 
-PAYLOAD = {"name": "Coffee shop", "platform": "google", "source_url": "https://example.com/place"}
+PAYLOAD = {
+    "name": "Coffee shop",
+    "platform": "google_maps",
+    "source_url": "https://www.google.com/maps/place/Coffee+Shop",
+}
 
 
 def stored_targets(client):
@@ -22,7 +26,6 @@ def test_creation_persists_verified_owners(client, auth_header):
         assert body["name"] == PAYLOAD["name"]
         ids.append(body["id"])
     assert ids[0] != ids[1]
-    # Reopen the database through a new engine: ownership survives beyond the request.
     engine = create_engine(client.application.config["DATABASE_URL"])
     try:
         with Session(engine) as session:
@@ -43,7 +46,6 @@ def test_client_cannot_assign_ownership(client, auth_header, field):
     assert response.status_code == 400
     assert response.get_json()["error"]["code"] == "VALIDATION_ERROR"
     assert stored_targets(client) == []
-    # The rightful user can still create after rejection.
     assert (
         client.post("/api/targets", json=PAYLOAD, headers=auth_header("user-a")).status_code == 201
     )

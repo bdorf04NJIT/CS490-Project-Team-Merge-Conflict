@@ -7,6 +7,12 @@ class AppError(Exception):
     code = "INTERNAL_ERROR"
     message = "Something went wrong."
 
+    def __init__(self, message=None, fields=None):
+        super().__init__(message or self.message)
+        if message:
+            self.message = message
+        self.fields = fields or {}
+
 
 class Unauthenticated(AppError):
     status = 401
@@ -26,14 +32,17 @@ class ValidationError(AppError):
     message = "Provide only name, platform, and a valid HTTP(S) source_url. Ownership is assigned automatically."
 
 
-def _body(code, message):
-    return jsonify(error={"code": code, "message": message})
+def _body(code, message, fields=None):
+    error = {"code": code, "message": message}
+    if fields:
+        error["fields"] = fields
+    return jsonify(error=error)
 
 
 def register_error_handlers(app):
     @app.errorhandler(AppError)
     def handle_app_error(e):
-        return _body(e.code, e.message), e.status
+        return _body(e.code, e.message, e.fields), e.status
 
     @app.errorhandler(Exception)
     def handle_unexpected(e):
