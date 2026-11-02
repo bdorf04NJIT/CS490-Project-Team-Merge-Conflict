@@ -46,3 +46,26 @@ export async function createTarget(
   if (!response.ok) throw new TargetError(response.status, MESSAGES[response.status] ?? FALLBACK)
   return response.json()
 }
+
+const LIST_MESSAGES: Record<number, string> = {
+  401: 'Your session has expired. Please sign in again.',
+}
+const LIST_FALLBACK = 'Unable to load your targets right now. Please try again.'
+
+export async function listTargets(accessToken: string): Promise<AnalysisTarget[]> {
+  let response: Response
+  try {
+    response = await fetch('/api/targets', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+  } catch {
+    throw new TargetError(0, 'Unable to connect. Check your connection and try again.')
+  }
+  if (!response.ok) {
+    throw new TargetError(response.status, LIST_MESSAGES[response.status] ?? LIST_FALLBACK)
+  }
+
+  const body: { targets?: AnalysisTarget[] } = await response.json()
+  if (!Array.isArray(body.targets)) throw new TargetError(response.status, LIST_FALLBACK)
+  return body.targets
+}

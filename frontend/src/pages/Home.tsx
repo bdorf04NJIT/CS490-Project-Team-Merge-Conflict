@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import CreateTargetForm from '../components/CreateTargetForm'
+import TargetList from '../components/TargetList'
 
 type HomeProps = {
   email: string | undefined
@@ -8,6 +10,7 @@ type HomeProps = {
 }
 
 export default function Home({ email, accessToken, busy, onLogout }: HomeProps) {
+  const [refreshKey, setRefreshKey] = useState(0)
   return (
     <section aria-labelledby="home-heading">
       <h2 id="home-heading" className="text-xl font-medium">
@@ -21,7 +24,8 @@ export default function Home({ email, accessToken, busy, onLogout }: HomeProps) 
       >
         Log out
       </button>
-      <CreateTargetForm accessToken={accessToken} />
+      <TargetList accessToken={accessToken} refreshKey={refreshKey} />
+      <CreateTargetForm accessToken={accessToken} onCreated={() => setRefreshKey((n) => n + 1)} />
     </section>
   )
 }

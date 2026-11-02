@@ -3,12 +3,12 @@ import type { FormEvent } from 'react'
 import { createTarget, PLATFORM, TargetError } from '../api/targets'
 import type { AnalysisTarget } from '../api/targets'
 
-type Props = { accessToken: string }
+type Props = { accessToken: string; onCreated?: () => void }
 
 const inputClass =
   'mb-5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-base text-slate-900 shadow-xs outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/15'
 
-export default function CreateTargetForm({ accessToken }: Props) {
+export default function CreateTargetForm({ accessToken, onCreated }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState<AnalysisTarget | null>(null)
@@ -19,12 +19,12 @@ export default function CreateTargetForm({ accessToken }: Props) {
     setBusy(true)
     setError('')
     try {
-      setCreated(
-        await createTarget(accessToken, {
-          name: String(values.get('name')).trim(),
-          sourceUrl: String(values.get('source_url')).trim(),
-        }),
-      )
+      const target = await createTarget(accessToken, {
+        name: String(values.get('name')).trim(),
+        sourceUrl: String(values.get('source_url')).trim(),
+      })
+      setCreated(target)
+      onCreated?.()
     } catch (e) {
       setError(
         e instanceof TargetError
