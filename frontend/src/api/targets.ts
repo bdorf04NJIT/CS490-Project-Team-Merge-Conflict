@@ -25,13 +25,20 @@ const MESSAGES: Record<number, string> = {
 }
 const FALLBACK = 'Unable to create the target right now. Please try again.'
 
-export async function createTarget(accessToken: string, target: NewTarget): Promise<AnalysisTarget> {
+export async function createTarget(
+  accessToken: string,
+  target: NewTarget,
+): Promise<AnalysisTarget> {
   let response: Response
   try {
     response = await fetch('/api/targets', {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: target.name, platform: PLATFORM.id, source_url: target.sourceUrl }),
+      body: JSON.stringify({
+        name: target.name,
+        platform: PLATFORM.id,
+        source_url: target.sourceUrl,
+      }),
     })
   } catch {
     throw new TargetError(0, 'Unable to connect. Check your connection and try again.')

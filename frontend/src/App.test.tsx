@@ -5,7 +5,10 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 
 const auth = vi.hoisted(() => ({
-  onAuthStateChange: vi.fn(), signInWithPassword: vi.fn(), signOut: vi.fn(), signUp: vi.fn(),
+  onAuthStateChange: vi.fn(),
+  signInWithPassword: vi.fn(),
+  signOut: vi.fn(),
+  signUp: vi.fn(),
 }))
 vi.mock('./lib/supabase', () => ({ supabase: { auth } }))
 const session = { access_token: 'provider-token', user: { email: 'user@example.com' } }
@@ -18,11 +21,18 @@ beforeEach(() => {
     callback('INITIAL_SESSION', null)
     return { data: { subscription: { unsubscribe: vi.fn() } } }
   })
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-    ok: true, json: async () => ({ user_id: 'verified-user' }),
-  }))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ user_id: 'verified-user' }),
+    }),
+  )
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 test('signs in through the SDK and sends the provider token to Flask', async () => {
   auth.signInWithPassword.mockImplementation(async () => {
@@ -33,11 +43,17 @@ test('signs in through the SDK and sends the provider token to Flask', async () 
   await userEvent.type(screen.getByLabelText('Email'), 'user@example.com')
   await userEvent.type(screen.getByLabelText('Password'), 'test-password')
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-  expect(auth.signInWithPassword).toHaveBeenCalledWith({ email: 'user@example.com', password: 'test-password' })
+  expect(auth.signInWithPassword).toHaveBeenCalledWith({
+    email: 'user@example.com',
+    password: 'test-password',
+  })
   expect(await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeTruthy()
-  expect(fetch).toHaveBeenCalledWith('/api/me', expect.objectContaining({
-    headers: { Authorization: 'Bearer provider-token' },
-  }))
+  expect(fetch).toHaveBeenCalledWith(
+    '/api/me',
+    expect.objectContaining({
+      headers: { Authorization: 'Bearer provider-token' },
+    }),
+  )
 })
 
 test('restores an existing session and logs out without retaining identity', async () => {
@@ -80,9 +96,14 @@ test('uses refreshed tokens and clears identity after an external sign-out', asy
   act(() => notify('SIGNED_IN', session))
   await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })
   act(() => notify('TOKEN_REFRESHED', { ...session, access_token: 'refreshed-token' }))
-  await waitFor(() => expect(fetch).toHaveBeenLastCalledWith('/api/me', expect.objectContaining({
-    headers: { Authorization: 'Bearer refreshed-token' },
-  })))
+  await waitFor(() =>
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/me',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer refreshed-token' },
+      }),
+    ),
+  )
   act(() => notify('SIGNED_OUT', null))
   expect(screen.getByLabelText('Password')).toBeTruthy()
   expect(screen.queryByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeNull()
@@ -106,7 +127,8 @@ test('registration requiring confirmation returns to login without backend acces
   await userEvent.type(screen.getByLabelText('Password'), 'new-password')
   await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
   expect(auth.signUp).toHaveBeenCalledWith({
-    email: 'new@example.com', password: 'new-password',
+    email: 'new@example.com',
+    password: 'new-password',
     options: { emailRedirectTo: window.location.origin },
   })
   expect((await screen.findByRole('status')).textContent).toContain('Check your email')

@@ -2,10 +2,11 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
-from app.models import AnalysisTarget
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+from app.models import AnalysisTarget
 
 VALUES = {
     "owner_id": "user-a",

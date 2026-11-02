@@ -1,7 +1,8 @@
 import pytest
-from app.models import AnalysisTarget
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
+
+from app.models import AnalysisTarget
 
 PAYLOAD = {"name": "Coffee shop", "platform": "google", "source_url": "https://example.com/place"}
 
@@ -26,7 +27,9 @@ def test_creation_persists_verified_owners(client, auth_header):
     try:
         with Session(engine) as session:
             rows = session.scalars(select(AnalysisTarget)).all()
-            assert {row.id: row.owner_id for row in rows} == dict(zip(ids, ("user-a", "user-b")))
+            assert {row.id: row.owner_id for row in rows} == dict(
+                zip(ids, ("user-a", "user-b"), strict=True)
+            )
             assert all(row.created_at is not None for row in rows)
     finally:
         engine.dispose()
@@ -41,7 +44,9 @@ def test_client_cannot_assign_ownership(client, auth_header, field):
     assert response.get_json()["error"]["code"] == "VALIDATION_ERROR"
     assert stored_targets(client) == []
     # The rightful user can still create after rejection.
-    assert client.post("/api/targets", json=PAYLOAD, headers=auth_header("user-a")).status_code == 201
+    assert (
+        client.post("/api/targets", json=PAYLOAD, headers=auth_header("user-a")).status_code == 201
+    )
     assert [row.owner_id for row in stored_targets(client)] == ["user-a"]
 
 
@@ -58,7 +63,10 @@ def test_unauthenticated_creation_writes_nothing(client, auth_header, token_kind
     assert stored_targets(client) == []
 
 
-@pytest.mark.parametrize("payload", [None, [], {}, {**PAYLOAD, "name": " "}, {**PAYLOAD, "source_url": "file:///etc/passwd"}])
+@pytest.mark.parametrize(
+    "payload",
+    [None, [], {}, {**PAYLOAD, "name": " "}, {**PAYLOAD, "source_url": "file:///etc/passwd"}],
+)
 def test_invalid_creation_writes_nothing(client, auth_header, payload):
     response = client.post("/api/targets", json=payload, headers=auth_header())
     assert response.status_code == 400
