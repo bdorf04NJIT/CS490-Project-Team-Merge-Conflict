@@ -24,7 +24,7 @@ goes to `http://127.0.0.1:5000`), so no API URL is hard coded.
 
 - Python 3.12 or newer
 - Node.js 22 LTS (22.22 or newer) and npm
-- Access to the team's Supabase project. Ask a teammate for the dev values.
+- Access to the team's Supabase project, as well as dev values.
 
 ## Quick start
 
