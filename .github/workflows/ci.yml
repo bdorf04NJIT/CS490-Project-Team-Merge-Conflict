@@ -1,5 +1,5 @@
 # Pull request CI (S1-007).
-# Runs lint, build, and unit tests for the frontend and backend on every pull
+# Runs lint, format checks, build, and unit tests for the frontend and backend on every pull
 # request and on every push to main. The job names "frontend" and "backend" are the checks to mark as required
 # No secrets are needed, as tests use fake config and a temporary SQLite database.
 
@@ -37,6 +37,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Format check
+        run: npm run format:check
+
       - name: Unit tests
         run: npm test
 
@@ -62,6 +65,12 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Format check
+        run: ruff format --check .
 
       # Python has no build step. Byte compiling every module catches syntax
       # errors the same way a failed build would.
