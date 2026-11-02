@@ -1,36 +1,61 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { createTarget, PLATFORM, TargetError } from '../api/targets'
-import type { AnalysisTarget } from '../api/targets'
+import type { AnalysisTarget, FieldErrors } from '../api/targets'
 
 type Props = { accessToken: string; onCreated?: () => void }
 
-const inputClass =
-  'mb-5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-base text-slate-900 shadow-xs outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/15'
+const inputBase =
+  'w-full rounded-lg border bg-white px-3.5 py-3 text-base text-slate-900 shadow-xs outline-none transition placeholder:text-slate-400 focus:ring-3'
+const inputOk = 'border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/15'
+const inputBad = 'border-red-400 focus:border-red-500 focus:ring-red-500/15'
+
+const REQUIRED: FieldErrors = {
+  name: 'Enter the business or place name.',
+  source_url: 'Enter the Google Maps URL for this place.',
+}
+
+function FieldMessage({ id, message }: { id: string; message?: string }) {
+  return message ? (
+    <p id={id} className="mt-1.5 text-sm text-red-700">
+      {message}
+    </p>
+  ) : null
+}
 
 export default function CreateTargetForm({ accessToken, onCreated }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [created, setCreated] = useState<AnalysisTarget | null>(null)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const values = new FormData(event.currentTarget)
-    setBusy(true)
+    const name = String(values.get('name') ?? '').trim()
+    const sourceUrl = String(values.get('source_url') ?? '').trim()
     setError('')
+
+    const missing: FieldErrors = {}
+    if (!name) missing.name = REQUIRED.name
+    if (!sourceUrl) missing.source_url = REQUIRED.source_url
+    setFieldErrors(missing)
+    if (Object.keys(missing).length) return
+
+    setBusy(true)
     try {
-      const target = await createTarget(accessToken, {
-        name: String(values.get('name')).trim(),
-        sourceUrl: String(values.get('source_url')).trim(),
-      })
+      const target = await createTarget(accessToken, { name, sourceUrl })
       setCreated(target)
       onCreated?.()
     } catch (e) {
-      setError(
-        e instanceof TargetError
-          ? e.message
-          : 'Unable to create the target right now. Please try again.',
-      )
+      if (e instanceof TargetError) {
+        setFieldErrors(e.fields)
+        const onlyFieldProblems =
+          e.status === 400 && (e.fields.name || e.fields.source_url) && !e.fields.platform
+        if (!onlyFieldProblems) setError(e.fields.platform ?? e.message)
+      } else {
+        setError('Unable to create the target right now. Please try again.')
+      }
     } finally {
       setBusy(false)
     }
@@ -74,6 +99,7 @@ export default function CreateTargetForm({ accessToken, onCreated }: Props) {
     <form
       aria-labelledby="create-heading"
       className="mt-8 flex flex-col"
+      noValidate
       onSubmit={(event) => void submit(event)}
     >
       <h3 id="create-heading" className="mb-4 text-lg font-semibold text-slate-900">
@@ -87,30 +113,37 @@ export default function CreateTargetForm({ accessToken, onCreated }: Props) {
           {error}
         </p>
       )}
+
       <label className="mb-2 text-sm font-medium text-slate-700" htmlFor="target-name">
         Business or place name
       </label>
       <input
-        className={inputClass}
+        className={`${inputBase} ${fieldErrors.name ? inputBad : inputOk}`}
         id="target-name"
         name="name"
         maxLength={255}
         placeholder="Joe's Coffee"
-        required
+        aria-invalid={Boolean(fieldErrors.name)}
+        aria-describedby={fieldErrors.name ? 'target-name-error' : undefined}
       />
-      <label className="mb-2 text-sm font-medium text-slate-700" htmlFor="target-url">
+      <FieldMessage id="target-name-error" message={fieldErrors.name} />
+
+      <label className="mt-5 mb-2 text-sm font-medium text-slate-700" htmlFor="target-url">
         Google Maps URL
       </label>
       <input
-        className={inputClass}
+        className={`${inputBase} ${fieldErrors.source_url ? inputBad : inputOk}`}
         id="target-url"
         name="source_url"
         type="url"
         maxLength={2048}
         placeholder="https://www.google.com/maps/place/..."
-        required
+        aria-invalid={Boolean(fieldErrors.source_url)}
+        aria-describedby={fieldErrors.source_url ? 'target-url-error' : undefined}
       />
-      <p className="mb-5 text-sm text-slate-500">
+      <FieldMessage id="target-url-error" message={fieldErrors.source_url} />
+
+      <p className="mt-5 mb-5 text-sm text-slate-500">
         Review platform: <span className="font-medium text-slate-700">{PLATFORM.label}</span>
       </p>
       <button

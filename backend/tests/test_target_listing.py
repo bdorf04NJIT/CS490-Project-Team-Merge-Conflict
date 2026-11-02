@@ -5,11 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.models import AnalysisTarget
 
+SOURCE_URL = "https://www.google.com/maps/place/Coffee+Shop"
+
 
 def make_target(client, auth_header, user, name):
     response = client.post(
         "/api/targets",
-        json={"name": name, "platform": "google_maps", "source_url": "https://example.com/p"},
+        json={"name": name, "platform": "google_maps", "source_url": SOURCE_URL},
         headers=auth_header(user),
     )
     assert response.status_code == 201
@@ -41,6 +43,8 @@ def test_user_b_never_receives_user_a_data(client, auth_header):
     response = client.get("/api/targets", headers=auth_header("user-b"))
     assert a1 not in [t["id"] for t in response.get_json()["targets"]]
     assert b"Secret cafe" not in response.data
+    # The rightful owner is unaffected afterward (guardrails checklist item 7).
+    assert list_ids(client, auth_header, "user-a") == [a1]
 
 
 @pytest.mark.parametrize("param", ["user_id", "userId", "owner_id", "ownerId", "owner"])
@@ -64,7 +68,7 @@ def test_list_returns_display_fields_and_omits_owner(client, auth_header):
     assert set(target) == {"id", "name", "platform", "source_url", "created_at"}
     assert target["name"] == "A one"
     assert target["platform"] == "google_maps"
-    assert target["source_url"] == "https://example.com/p"
+    assert target["source_url"] == SOURCE_URL
 
 
 def test_targets_are_listed_newest_first(client, auth_header):
@@ -75,7 +79,7 @@ def test_targets_are_listed_newest_first(client, auth_header):
                     owner_id="user-a",
                     name=name,
                     platform="google_maps",
-                    source_url="https://example.com/p",
+                    source_url=SOURCE_URL,
                     created_at=datetime(2026, 1, day, tzinfo=UTC),
                 )
             )
