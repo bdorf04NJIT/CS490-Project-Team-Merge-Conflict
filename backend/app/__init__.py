@@ -43,7 +43,12 @@ def create_app(config=None):
         raise RuntimeError("SERPAPI_MAX_PAGES must be between 1 and 10")
     app.extensions.setdefault(
         "review_source",
-        SerpApiGoogleMapsSource(keys, max_pages=max_pages, quota_preflight=True)
+        SerpApiGoogleMapsSource(
+            keys,
+            max_pages=max_pages,
+            quota_preflight=True,
+            extra_sorts=("newestFirst", "ratingHigh", "ratingLow"),
+        )
         if keys
         else UnconfiguredReviewSource(),
     )

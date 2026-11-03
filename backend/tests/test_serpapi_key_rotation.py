@@ -145,6 +145,45 @@ def test_bounded_pagination_uses_provider_token_and_preserves_real_rows():
     assert all("target_id" not in q for q in calls)
 
 
+def sorted_pages(url):
+    """One short page per sort order, overlapping like the real provider."""
+    pages = {
+        None: ["r1", "r2", "r3"],
+        "newestFirst": ["r3", "r4", "r5"],
+        "ratingLow": ["r6", "r1"],
+    }
+    ids = pages.get(query(url).get("sort_by"), [])
+    return json.dumps(
+        {"reviews": [{"review_id": i, "snippet": f"Text {i}", "rating": 3} for i in ids]}
+    ).encode()
+
+
+def test_extra_sort_orders_add_only_new_real_reviews():
+    calls = []
+
+    def fake(url):
+        calls.append(query(url).get("sort_by"))
+        return sorted_pages(url)
+
+    source = SerpApiGoogleMapsSource(
+        "fake-key-a", transport=fake, extra_sorts=("newestFirst", "ratingLow")
+    )
+    result = source.submit(target_id="t", source_url=PLACE)
+    assert [r["review_id"] for r in result.rows] == ["r1", "r2", "r3", "r4", "r5", "r6"]
+    assert calls == [None, "newestFirst", "ratingLow"]
+
+
+def test_extra_sort_failure_keeps_reviews_already_collected():
+    def fake(url):
+        if query(url).get("sort_by"):
+            raise HTTPError(url, 500, "Server Error", {}, io.BytesIO(b"{}"))
+        return sorted_pages(url)
+
+    source = SerpApiGoogleMapsSource("fake-key-a", transport=fake, extra_sorts=("newestFirst",))
+    result = source.submit(target_id="t", source_url=PLACE)
+    assert [r["review_id"] for r in result.rows] == ["r1", "r2", "r3"]
+
+
 def test_invalid_key_401_is_quarantined_without_reporting_key():
     from urllib.error import HTTPError
 
