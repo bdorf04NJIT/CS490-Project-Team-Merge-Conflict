@@ -120,6 +120,33 @@ export async function getTarget(accessToken: string, id: string): Promise<Target
   return { ...body, latest_ingestion: body.latest_ingestion ?? null } as TargetWorkspace
 }
 
+export type Review = {
+  id: string
+  text: string
+  rating: number
+  reviewer_name: string | null
+  review_date: string | null
+}
+
+const REVIEWS_FALLBACK = 'Unable to load reviews right now. Please try again.'
+
+export async function listReviews(accessToken: string, targetId: string): Promise<Review[]> {
+  let response: Response
+  try {
+    response = await fetch(`/api/targets/${encodeURIComponent(targetId)}/reviews`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+  } catch {
+    throw new TargetError(0, 'Unable to connect. Check your connection and try again.')
+  }
+  if (!response.ok) {
+    throw new TargetError(response.status, GET_MESSAGES[response.status] ?? REVIEWS_FALLBACK)
+  }
+  const body: { reviews?: Review[] } = await response.json()
+  if (!Array.isArray(body?.reviews)) throw new TargetError(response.status, REVIEWS_FALLBACK)
+  return body.reviews
+}
+
 export type IngestionRequest = {
   target_id: string
   status: string

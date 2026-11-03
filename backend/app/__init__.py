@@ -48,6 +48,8 @@ def create_app(config=None):
             max_pages=max_pages,
             quota_preflight=True,
             extra_sorts=("newestFirst", "ratingHigh", "ratingLow"),
+            min_reviews=20,
+            max_topics=4,
         )
         if keys
         else UnconfiguredReviewSource(),

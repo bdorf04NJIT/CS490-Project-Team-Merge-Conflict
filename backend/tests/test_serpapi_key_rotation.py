@@ -184,6 +184,31 @@ def test_extra_sort_failure_keeps_reviews_already_collected():
     assert [r["review_id"] for r in result.rows] == ["r1", "r2", "r3"]
 
 
+def test_topics_top_up_until_minimum_most_mentioned_first():
+    calls = []
+
+    def fake(url):
+        values = query(url)
+        calls.append(values.get("topic_id"))
+        by_topic = {None: ["r1", "r2"], "busy": ["r2", "r3"], "quiet": ["r4"], "never": ["r5"]}
+        ids = by_topic[values.get("topic_id")]
+        body = {"reviews": [{"review_id": i, "snippet": i, "rating": 4} for i in ids]}
+        if values.get("topic_id") is None:
+            body["topics"] = [
+                {"id": "quiet", "mentions": 3},
+                {"id": "busy", "mentions": 50},
+                {"id": "never", "mentions": 1},
+                {"keyword": "no id"},
+            ]
+        return json.dumps(body).encode()
+
+    source = SerpApiGoogleMapsSource("fake-key-a", transport=fake, min_reviews=4, max_topics=3)
+    result = source.submit(target_id="t", source_url=PLACE)
+    assert [r["review_id"] for r in result.rows] == ["r1", "r2", "r3", "r4"]
+    # Stops once the minimum is reached, so the least mentioned topic is never fetched.
+    assert calls == [None, "busy", "quiet"]
+
+
 def test_invalid_key_401_is_quarantined_without_reporting_key():
     from urllib.error import HTTPError
 

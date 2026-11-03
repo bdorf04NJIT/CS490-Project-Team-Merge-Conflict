@@ -39,20 +39,41 @@ def persist_reviews(engine, *, owner_id, target_id, reviews, skipped_count, sour
         raise ValueError("No valid reviews to persist")
     with Session(engine) as session, session.begin():
         _owned_target(session, target_id=target_id, owner_id=owner_id)
+        # Re-ingesting a target must not save the same provider review twice.
+        seen = set(
+            session.scalars(
+                select(Review.source_review_id).where(
+                    Review.target_id == target_id, Review.source_review_id.is_not(None)
+                )
+            )
+        )
+        new_reviews = []
+        for review in reviews:
+            review_id = review.get("source_review_id")
+            if review_id is not None:
+                if review_id in seen:
+                    continue
+                seen.add(review_id)
+            new_reviews.append(review)
+        already_saved = len(reviews) - len(new_reviews)
+        if skipped_count:
+            message = "Import completed with skipped reviews."
+        elif already_saved:
+            message = f"Import succeeded. {already_saved} reviews were already saved."
+        else:
+            message = "Import succeeded."
         run = IngestionRun(
             target_id=target_id,
             source_kind=source_kind,
             status="partial" if skipped_count else "succeeded",
             total_count=len(reviews) + skipped_count,
-            imported_count=len(reviews),
+            imported_count=len(new_reviews),
             skipped_count=skipped_count,
-            message="Import completed with skipped reviews."
-            if skipped_count
-            else "Import succeeded.",
+            message=message,
         )
         session.add(run)
         session.flush()
-        for review in reviews:
+        for review in new_reviews:
             session.add(Review(target_id=target_id, ingestion_run_id=run.id, **review))
         session.flush()
         return _run_output(run)
