@@ -6,6 +6,8 @@ from dataclasses import asdict
 from sqlalchemy.orm import Session
 
 from ..adapters.review_source_csv import MAX_CSV_BYTES, SourceFormatError, parse_review_csv
+from ..adapters.serpapi_source import SerpApiGoogleMapsSource
+from ..adapters.short_maps_links import ShortMapsLinkError, resolve_short_maps_link
 from ..errors import IngestionFailed, IngestionUnavailable, ValidationError
 from .review_normalization import normalize_reviews
 from .review_storage import persist_reviews, record_failed_run
@@ -61,6 +63,13 @@ def start_ingestion(engine, review_source, *, owner_id, target_id, payload):
 
     logger.info("Starting ingestion for target %s", target_id)
     try:
+        # Only the real SerpAPI source needs a stable place identifier.
+        # Fake/test and unconfigured sources preserve their existing contract.
+        if isinstance(review_source, SerpApiGoogleMapsSource):
+            try:
+                source_url = resolve_short_maps_link(source_url)
+            except ShortMapsLinkError as exc:
+                raise ValidationError(str(exc)) from None
         batch = review_source.submit(target_id=target_id, source_url=source_url)
     except (IngestionUnavailable, ValidationError) as exc:
         # Store a safe, user-facing error; provider keys and stack traces never enter DB.
