@@ -1,7 +1,7 @@
 from flask import Blueprint, current_app, g, jsonify, request
 
 from .auth import require_auth
-from .services.targets import create_target, list_targets
+from .services.targets import create_target, get_target, list_targets
 
 bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -34,3 +34,11 @@ def get_targets():
     # Ownership comes only from the verified token. Query params are never read.
     targets = list_targets(current_app.extensions["database"], owner_id=g.user_id)
     return jsonify(targets=targets)
+
+
+@bp.get("/targets/<target_id>")
+@require_auth
+def get_one_target(target_id):
+    # The URL id only says which target is requested; ownership is checked in the query.
+    target = get_target(current_app.extensions["database"], owner_id=g.user_id, target_id=target_id)
+    return jsonify(target)

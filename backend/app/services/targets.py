@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..errors import ValidationError
+from ..errors import NotFound, ValidationError
 from ..models import AnalysisTarget
 
 PLATFORM = "google_maps"
@@ -92,11 +92,21 @@ def validate_target(payload):
     return {"name": name, "platform": PLATFORM, "source_url": source_url}
 
 
+def _summary(row):
+    # owner_id is intentionally omitted: the caller already knows it from the token.
+    return {
+        "id": row.id,
+        "name": row.name,
+        "platform": row.platform,
+        "source_url": row.source_url,
+        "created_at": row.created_at.isoformat(),
+    }
+
+
 def list_targets(engine, *, owner_id):
     """Return only the targets owned by owner_id, newest first.
 
     The ownership filter is applied in the database query, never in the caller.
-    owner_id is intentionally omitted from the result: the caller already knows it.
     """
     with Session(engine) as session:
         rows = session.scalars(
@@ -104,16 +114,26 @@ def list_targets(engine, *, owner_id):
             .where(AnalysisTarget.owner_id == owner_id)
             .order_by(AnalysisTarget.created_at.desc(), AnalysisTarget.id)
         ).all()
-        return [
-            {
-                "id": row.id,
-                "name": row.name,
-                "platform": row.platform,
-                "source_url": row.source_url,
-                "created_at": row.created_at.isoformat(),
-            }
-            for row in rows
-        ]
+        return [_summary(row) for row in rows]
+
+
+def get_target(engine, *, owner_id, target_id):
+    """Return one target only if owner_id owns it.
+
+    The id and the owner are matched in the same query, so another user's target
+    and a target that does not exist both raise the same NotFound. A caller can
+    therefore not learn whether someone else's id exists.
+    """
+    with Session(engine) as session:
+        row = session.scalars(
+            select(AnalysisTarget).where(
+                AnalysisTarget.id == target_id, AnalysisTarget.owner_id == owner_id
+            )
+        ).one_or_none()
+        if row is None:
+            raise NotFound("We couldn't find that analysis target.")
+        # Ingestion runs are recorded starting in S1-023; until then there is none to report.
+        return {**_summary(row), "latest_ingestion": None}
 
 
 def create_target(engine, *, owner_id, payload):

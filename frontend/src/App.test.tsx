@@ -32,6 +32,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  window.history.replaceState(null, '', '/')
 })
 
 test('signs in through the SDK and sends the provider token to Flask', async () => {
@@ -178,4 +179,64 @@ test('rejected registration stays on the form without claiming success', async (
   expect(screen.getByRole('button', { name: 'Create account' })).toBeTruthy()
   expect(screen.queryByText(/Check your email/)).toBeNull()
   expect(fetch).not.toHaveBeenCalled()
+})
+
+const WORKSPACE_TARGET = {
+  id: 't1',
+  name: "Joe's Coffee",
+  platform: 'google_maps',
+  source_url: 'https://www.google.com/maps/place/joes',
+  created_at: '2026-01-02T00:00:00+00:00',
+}
+
+function signedIn(routes: Record<string, { status: number; body: unknown }>) {
+  auth.onAuthStateChange.mockImplementation((callback) => {
+    callback('INITIAL_SESSION', session)
+    return { data: { subscription: { unsubscribe: vi.fn() } } }
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      const route = routes[url] ?? { status: 200, body: { user_id: 'verified-user' } }
+      return {
+        ok: route.status < 300,
+        status: route.status,
+        json: async () => route.body,
+      } as Response
+    }),
+  )
+}
+
+test('opens a target workspace from the list and returns to the list', async () => {
+  signedIn({
+    '/api/targets': { status: 200, body: { targets: [WORKSPACE_TARGET] } },
+    '/api/targets/t1': { status: 200, body: { ...WORKSPACE_TARGET, latest_ingestion: null } },
+  })
+  render(<App />)
+  await userEvent.click(await screen.findByRole('link', { name: /Joe's Coffee/ }))
+
+  expect(await screen.findByRole('heading', { name: "Joe's Coffee" })).toBeTruthy()
+  expect(window.location.pathname).toBe('/targets/t1')
+  expect(screen.getByRole('button', { name: 'Start ingestion' })).toBeTruthy()
+
+  await userEvent.click(screen.getByRole('button', { name: /Back to your targets/ }))
+  expect(await screen.findByRole('heading', { name: 'Your analysis targets' })).toBeTruthy()
+  expect(window.location.pathname).toBe('/')
+})
+
+test('direct navigation to another user target id is denied without data', async () => {
+  window.history.replaceState(null, '', '/targets/user-a-target')
+  signedIn({
+    '/api/targets/user-a-target': {
+      status: 404,
+      body: { error: { code: 'NOT_FOUND', message: "We couldn't find that analysis target." } },
+    },
+  })
+  render(<App />)
+
+  expect((await screen.findByRole('alert')).textContent).toContain("don't have access")
+  expect(fetch).toHaveBeenCalledWith('/api/targets/user-a-target', {
+    headers: { Authorization: 'Bearer provider-token' },
+  })
+  expect(screen.queryByRole('button', { name: 'Start ingestion' })).toBeNull()
 })
