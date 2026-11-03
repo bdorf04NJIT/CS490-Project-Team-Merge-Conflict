@@ -7,9 +7,10 @@ Create `backend/.env` with the development values shared privately by the team:
 ```dotenv
 SUPABASE_URL=YOUR_SUPABASE_PROJECT_URL
 DATABASE_URL=YOUR_POSTGRES_CONNECTION_STRING
+SERPAPI_API_KEY=YOUR_SERPAPI_KEY
 ```
 
-The database URL must start with `postgresql+psycopg://` and include `sslmode=require`. Do not commit `.env`.
+The database URL must start with `postgresql+psycopg://` and include `sslmode=require`. `SERPAPI_API_KEY` is optional and only needed to pull reviews from Google Maps. Do not commit `.env`.
 
 From the project root, run in PowerShell:
 

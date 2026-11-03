@@ -61,7 +61,7 @@ committed. Get the real values from a teammate privately, not in a commit, issue
 
 | Copy this | To this | Values |
 |---|---|---|
-| `backend/.env.example` | `backend/.env` | `SUPABASE_URL`, `DATABASE_URL` |
+| `backend/.env.example` | `backend/.env` | `SUPABASE_URL`, `DATABASE_URL`, and optionally `SERPAPI_API_KEY` |
 | `frontend/.env.example` | `frontend/.env.local` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` |
 
 Windows PowerShell, from the repo root:
@@ -82,6 +82,9 @@ Notes on the values:
 
 - `DATABASE_URL` must start with `postgresql+psycopg://` and end with `?sslmode=require`.
 - `SUPABASE_URL` and `VITE_SUPABASE_URL` are the same project URL.
+- `SERPAPI_API_KEY` is only needed for **Start ingestion** (pulling reviews from Google
+  Maps). Without it, CSV upload still works. See
+  [SerpApi key management](serpapi-key-management.md) for the other SerpApi settings.
 - Only the Supabase **publishable** key goes in the frontend. Anything starting with
   `VITE_` is bundled into browser code, so never put a database password or private key in
   a `VITE_` variable.
@@ -99,7 +102,8 @@ cd backend
 
 Mac/Linux, with the venv active: `flask --app app init-db`
 
-This creates missing tables only. It does not change or drop existing tables.
+This creates missing tables and turns on row level security for them. It does not change or
+drop existing tables.
 
 ## 7. Run the app
 
@@ -160,6 +164,7 @@ To fix formatting automatically: `npm run format` in `frontend/`, or `ruff forma
 | `DATABASE_URL must use postgresql+psycopg://` | Wrong URL prefix | Change the start of the URL to `postgresql+psycopg://` |
 | Browser shows `Set Supabase configuration in frontend/.env.local` | Missing frontend env file | Create `frontend/.env.local` (step 5) |
 | Vite logs `http proxy error` for `/api` | Backend isn't running | Start the backend (step 7) |
+| **Start ingestion** says ingestion is unavailable | No SerpApi key | Add `SERPAPI_API_KEY` to `backend/.env` and restart the backend, or use CSV upload |
 | `No module named ruff` or `prettier: not found` | Tools added after your last install | `pip install -r requirements.txt` in `backend/`, `npm ci` in `frontend/` |
 | CI fails on **Format check** | Code isn't formatted | Run the format command (step 8) and push again |
 | `package-lock.json` changes a lot after installing a package | Older npm rewrote it | `npm install -g npm@11`, restore the lockfile, reinstall |
