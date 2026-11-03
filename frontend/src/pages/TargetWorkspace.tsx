@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ReviewCsvImport from '../components/ReviewCsvImport'
 import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
 import type { TargetWorkspace as Workspace } from '../api/targets'
 
@@ -44,8 +45,15 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
     if (submitting) return
     setIngest({ targetId, state: 'submitting', message: '' })
     try {
-      await startIngestion(accessToken, targetId)
-      setIngest({ targetId, state: 'accepted', message: 'Ingestion started for this target.' })
+      const response = await startIngestion(accessToken, targetId)
+      setIngest({
+        targetId,
+        state: 'accepted',
+        message: response.run_status
+          ? `Imported ${response.imported_count} reviews (${response.skipped_count} skipped).`
+          : 'Ingestion started for this target.',
+      })
+      if (response.run_status) setAttempt((n) => n + 1)
     } catch (e: unknown) {
       const message =
         e instanceof TargetError
@@ -175,6 +183,11 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
           </p>
         )}
       </section>
+      <ReviewCsvImport
+        accessToken={accessToken}
+        targetId={targetId}
+        onImported={() => setAttempt((n) => n + 1)}
+      />
     </section>
   )
 }

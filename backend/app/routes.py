@@ -1,7 +1,8 @@
 from flask import Blueprint, current_app, g, jsonify, request
 
 from .auth import require_auth
-from .services.ingestion import start_ingestion
+from .services.ingestion import import_supplied_reviews, start_ingestion
+from .services.review_storage import list_reviews
 from .services.targets import create_target, get_target, list_targets
 
 bp = Blueprint("api", __name__, url_prefix="/api")
@@ -57,3 +58,38 @@ def post_ingestion(target_id):
         payload=request.get_json(silent=True),
     )
     return jsonify(result), 202
+
+
+@bp.post("/targets/<target_id>/ingestions/import")
+@require_auth
+def post_ingestion_import(target_id):
+    # The import service verifies target ownership BEFORE it reads upload bytes.
+    result = import_supplied_reviews(
+        current_app.extensions["database"],
+        owner_id=g.user_id,
+        target_id=target_id,
+        upload=lambda: request.files.get("file"),
+    )
+    return jsonify(run=result), 201
+
+
+@bp.get("/targets/<target_id>/reviews")
+@require_auth
+def get_target_reviews(target_id):
+    try:
+        offset = int(request.args.get("offset", "0"))
+    except ValueError:
+        from .errors import ValidationError
+
+        raise ValidationError("Invalid review offset.") from None
+    if offset < 0 or offset > 100000:
+        from .errors import ValidationError
+
+        raise ValidationError("Invalid review offset.")
+    rows = list_reviews(
+        current_app.extensions["database"],
+        owner_id=g.user_id,
+        target_id=target_id,
+        offset=offset,
+    )
+    return jsonify(reviews=rows)

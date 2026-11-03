@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..errors import NotFound, ValidationError
 from ..models import AnalysisTarget
+from .review_storage import latest_run
 
 PLATFORM = "google_maps"
 
@@ -144,8 +145,10 @@ def get_target(engine, *, owner_id, target_id):
     """Return one target only if owner_id owns it (see find_owned_target)."""
     with Session(engine) as session:
         row = find_owned_target(session, owner_id=owner_id, target_id=target_id)
-        # Ingestion runs are recorded starting in S1-023; until then there is none to report.
-        return {**_summary(row), "latest_ingestion": None}
+        return {
+            **_summary(row),
+            "latest_ingestion": latest_run(engine, owner_id=owner_id, target_id=target_id),
+        }
 
 
 def create_target(engine, *, owner_id, payload):
