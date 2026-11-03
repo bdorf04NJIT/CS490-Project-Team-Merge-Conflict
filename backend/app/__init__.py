@@ -30,9 +30,22 @@ def create_app(config=None):
     )
     register_error_handlers(app)
     init_database(app)
-    key = os.environ.get("SERPAPI_API_KEY", "").strip()
+    # Team-authorized credentials only; multi-key config overrides legacy single-key config.
+    keys_env = os.environ.get("SERPAPI_API_KEYS", "").strip()
+    keys = [part.strip() for part in keys_env.split(",") if part.strip()] if keys_env else []
+    if not keys and os.environ.get("SERPAPI_API_KEY", "").strip():
+        keys = [os.environ["SERPAPI_API_KEY"].strip()]
+    try:
+        max_pages = int(os.environ.get("SERPAPI_MAX_PAGES", "3"))
+    except ValueError:
+        raise RuntimeError("SERPAPI_MAX_PAGES must be an integer between 1 and 10") from None
+    if not 1 <= max_pages <= 10:
+        raise RuntimeError("SERPAPI_MAX_PAGES must be between 1 and 10")
     app.extensions.setdefault(
-        "review_source", SerpApiGoogleMapsSource(key) if key else UnconfiguredReviewSource()
+        "review_source",
+        SerpApiGoogleMapsSource(keys, max_pages=max_pages, quota_preflight=True)
+        if keys
+        else UnconfiguredReviewSource(),
     )
     app.register_blueprint(bp)
     return app
