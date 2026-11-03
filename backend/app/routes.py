@@ -3,7 +3,7 @@ from flask import Blueprint, current_app, g, jsonify, request
 from .auth import require_auth
 from .services.ingestion import import_supplied_reviews, start_ingestion
 from .services.review_storage import list_reviews
-from .services.targets import create_target, get_target, list_targets
+from .services.targets import create_target, get_target, list_targets, update_target
 
 bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -43,6 +43,19 @@ def get_targets():
 def get_one_target(target_id):
     # The URL id only says which target is requested; ownership is checked in the query.
     target = get_target(current_app.extensions["database"], owner_id=g.user_id, target_id=target_id)
+    return jsonify(target)
+
+
+@bp.patch("/targets/<target_id>")
+@require_auth
+def patch_target(target_id):
+    # Ownership is enforced inside update_target; the URL id alone grants nothing.
+    target = update_target(
+        current_app.extensions["database"],
+        owner_id=g.user_id,
+        target_id=target_id,
+        payload=request.get_json(silent=True),
+    )
     return jsonify(target)
 
 
