@@ -9,7 +9,12 @@ SECRET = "test-secret-at-least-32-bytes-long!!"
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
+    # A developer's backend/.env may contain live SerpApi credentials. The test
+    # client must never use them or make external provider calls.
+    monkeypatch.setenv("SERPAPI_API_KEY", "")
+    monkeypatch.setenv("SERPAPI_API_KEYS", "")
+    monkeypatch.setenv("SERPAPI_MAX_PAGES", "1")
     from app.models import Base
 
     app = create_app(
