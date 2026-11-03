@@ -119,3 +119,33 @@ export async function getTarget(accessToken: string, id: string): Promise<Target
     throw new TargetError(response.status, GET_FALLBACK)
   return { ...body, latest_ingestion: body.latest_ingestion ?? null } as TargetWorkspace
 }
+
+export type IngestionRequest = { target_id: string; status: string }
+
+const INGEST_MESSAGES: Record<number, string> = {
+  400: "This target's source can't be ingested. Check that it has a valid Google Maps URL.",
+  401: 'Your session has expired. Please sign in again.',
+  404: "This analysis target doesn't exist or you don't have access to it.",
+  503: "Review ingestion isn't available right now. Please try again later.",
+}
+const INGEST_FALLBACK = 'Unable to start ingestion right now. Please try again.'
+
+export async function startIngestion(
+  accessToken: string,
+  targetId: string,
+): Promise<IngestionRequest> {
+  let response: Response
+  try {
+    // No body: the backend always ingests from the target's saved source URL.
+    response = await fetch(`/api/targets/${encodeURIComponent(targetId)}/ingestions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+  } catch {
+    throw new TargetError(0, 'Unable to connect. Check your connection and try again.')
+  }
+  if (!response.ok) {
+    throw new TargetError(response.status, INGEST_MESSAGES[response.status] ?? INGEST_FALLBACK)
+  }
+  return response.json()
+}

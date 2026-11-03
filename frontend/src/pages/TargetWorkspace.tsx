@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { getTarget, PLATFORM, TargetError } from '../api/targets'
+import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
 import type { TargetWorkspace as Workspace } from '../api/targets'
 
 type Props = { accessToken: string; targetId: string; onBack: () => void }
 type Result = { key: string; target: Workspace | null; error: string }
+type Ingest = { targetId: string; state: 'submitting' | 'accepted' | 'error'; message: string }
 
 const STATUS_LABELS: Record<string, string> = {
   processing: 'Ingestion in progress',
@@ -14,6 +15,7 @@ const STATUS_LABELS: Record<string, string> = {
 export default function TargetWorkspace({ accessToken, targetId, onBack }: Props) {
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<Result | null>(null)
+  const [ingest, setIngest] = useState<Ingest | null>(null)
   const requestKey = `${targetId}:${attempt}`
 
   useEffect(() => {
@@ -34,6 +36,24 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
   }, [accessToken, targetId, requestKey])
 
   const loading = result === null || result.key !== requestKey
+  // Ignore ingestion feedback left over from a different target.
+  const ingestRequest = ingest?.targetId === targetId ? ingest : null
+  const submitting = ingestRequest?.state === 'submitting'
+
+  async function handleStartIngestion() {
+    if (submitting) return
+    setIngest({ targetId, state: 'submitting', message: '' })
+    try {
+      await startIngestion(accessToken, targetId)
+      setIngest({ targetId, state: 'accepted', message: 'Ingestion started for this target.' })
+    } catch (e: unknown) {
+      const message =
+        e instanceof TargetError
+          ? e.message
+          : 'Unable to start ingestion right now. Please try again.'
+      setIngest({ targetId, state: 'error', message })
+    }
+  }
   const backLink = (
     <button
       type="button"
@@ -127,17 +147,33 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
           Ingest reviews
         </h4>
         <p id="ingest-help" className="mt-1 text-sm text-slate-500">
-          Import reviews from this target&apos;s {PLATFORM.label} source. Starting ingestion is not
-          available yet.
+          Import reviews from this target&apos;s saved {PLATFORM.label} source.
         </p>
         <button
           type="button"
           className="mt-3 w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-indigo-700 disabled:opacity-60"
           aria-describedby="ingest-help"
-          disabled
+          disabled={submitting}
+          onClick={handleStartIngestion}
         >
-          Start ingestion
+          {submitting ? 'Starting ingestion...' : 'Start ingestion'}
         </button>
+        {ingestRequest?.state === 'accepted' && (
+          <p
+            role="status"
+            className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+          >
+            {ingestRequest.message}
+          </p>
+        )}
+        {ingestRequest?.state === 'error' && (
+          <p
+            role="alert"
+            className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800"
+          >
+            {ingestRequest.message}
+          </p>
+        )}
       </section>
     </section>
   )

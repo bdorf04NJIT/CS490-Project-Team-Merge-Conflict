@@ -98,4 +98,74 @@ describe('TargetWorkspace', () => {
     await userEvent.click(screen.getByRole('button', { name: /Back to your targets/ }))
     expect(onBack).toHaveBeenCalledOnce()
   })
+
+  it('starts ingestion for the open target and confirms it', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(reply(200, TARGET))
+      .mockResolvedValueOnce(reply(202, { target_id: 't1', status: 'accepted' }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok-123" targetId="t1" onBack={() => {}} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Start ingestion' }))
+
+    expect((await screen.findByText('Ingestion started for this target.')).textContent).toBeTruthy()
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/targets/t1/ingestions', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer tok-123' },
+    })
+  })
+
+  it('disables the button while the request is in flight', async () => {
+    let finish: (r: Response) => void = () => {}
+    const pending = new Promise<Response>((resolve) => (finish = resolve))
+    const fetchMock = vi.fn().mockResolvedValueOnce(reply(200, TARGET)).mockReturnValueOnce(pending)
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Start ingestion' }))
+    const busy = screen.getByRole('button', { name: 'Starting ingestion...' }) as HTMLButtonElement
+    expect(busy.disabled).toBe(true)
+    await userEvent.click(busy)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    finish(reply(202, { target_id: 't1', status: 'accepted' }))
+    expect(await screen.findByText('Ingestion started for this target.')).toBeTruthy()
+  })
+
+  it.each([
+    [404, "don't have access"],
+    [400, 'valid Google Maps URL'],
+    [401, 'session has expired'],
+    [503, "isn't available right now"],
+    [500, 'Unable to start ingestion'],
+  ])('shows a clear error when ingestion is refused with %i', async (status, text) => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(reply(200, TARGET))
+      .mockResolvedValueOnce(reply(status, { error: { message: 'internal detail' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Start ingestion' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain(text)
+    expect(alert.textContent).not.toContain('internal detail')
+    expect(screen.queryByText('Ingestion started for this target.')).toBeNull()
+    expect(
+      (screen.getByRole('button', { name: 'Start ingestion' }) as HTMLButtonElement).disabled,
+    ).toBe(false)
+  })
+
+  it('reports a network failure when starting ingestion', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(reply(200, TARGET))
+      .mockRejectedValueOnce(new TypeError('offline'))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Start ingestion' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('Unable to connect')
+  })
 })
