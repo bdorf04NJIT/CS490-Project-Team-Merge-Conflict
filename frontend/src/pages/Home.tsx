@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import CreateTargetForm from '../components/CreateTargetForm'
 import TargetList from '../components/TargetList'
+import { targetIdFromPath, targetPath, usePath } from '../hooks/usePath'
+import TargetWorkspace from './TargetWorkspace'
 
 type HomeProps = {
   email: string | undefined
@@ -11,6 +13,9 @@ type HomeProps = {
 
 export default function Home({ email, accessToken, busy, onLogout }: HomeProps) {
   const [refreshKey, setRefreshKey] = useState(0)
+  const { path, navigate } = usePath()
+  const targetId = targetIdFromPath(path)
+
   return (
     <section aria-labelledby="home-heading">
       <h2 id="home-heading" className="text-xl font-medium">
@@ -24,8 +29,27 @@ export default function Home({ email, accessToken, busy, onLogout }: HomeProps) 
       >
         Log out
       </button>
-      <TargetList accessToken={accessToken} refreshKey={refreshKey} />
-      <CreateTargetForm accessToken={accessToken} onCreated={() => setRefreshKey((n) => n + 1)} />
+      {targetId ? (
+        <TargetWorkspace
+          key={targetId}
+          accessToken={accessToken}
+          targetId={targetId}
+          onBack={() => navigate('/')}
+        />
+      ) : (
+        <>
+          <TargetList
+            accessToken={accessToken}
+            refreshKey={refreshKey}
+            onOpen={(id) => navigate(targetPath(id))}
+          />
+          <CreateTargetForm
+            accessToken={accessToken}
+            onCreated={() => setRefreshKey((n) => n + 1)}
+            onOpen={(id) => navigate(targetPath(id))}
+          />
+        </>
+      )}
     </section>
   )
 }

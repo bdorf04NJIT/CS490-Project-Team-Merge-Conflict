@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { createTarget, PLATFORM, TargetError } from '../api/targets'
 import type { AnalysisTarget, FieldErrors } from '../api/targets'
 
-type Props = { accessToken: string; onCreated?: () => void }
+type Props = { accessToken: string; onCreated?: () => void; onOpen?: (id: string) => void }
 
 const inputBase =
   'w-full rounded-lg border bg-white px-3.5 py-3 text-base text-slate-900 shadow-xs outline-none transition placeholder:text-slate-400 focus:ring-3'
@@ -23,7 +23,7 @@ function FieldMessage({ id, message }: { id: string; message?: string }) {
   ) : null
 }
 
-export default function CreateTargetForm({ accessToken, onCreated }: Props) {
+export default function CreateTargetForm({ accessToken, onCreated, onOpen }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
@@ -84,13 +84,24 @@ export default function CreateTargetForm({ accessToken, onCreated }: Props) {
             <dd className="inline break-all">{created.source_url}</dd>
           </div>
         </dl>
-        <button
-          className="mt-4 text-sm font-medium text-indigo-600 hover:underline"
-          type="button"
-          onClick={() => setCreated(null)}
-        >
-          Create another target
-        </button>
+        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+          {onOpen && (
+            <button
+              className="text-sm font-medium text-indigo-600 hover:underline"
+              type="button"
+              onClick={() => onOpen(created.id)}
+            >
+              Open workspace
+            </button>
+          )}
+          <button
+            className="text-sm font-medium text-indigo-600 hover:underline"
+            type="button"
+            onClick={() => setCreated(null)}
+          >
+            Create another target
+          </button>
+        </div>
       </section>
     )
   }

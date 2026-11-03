@@ -84,3 +84,16 @@ describe('TargetList', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Unable to load your targets')
   })
 })
+
+describe('TargetList navigation', () => {
+  it('links each target to its workspace and opens it on click', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, { targets: TARGETS })))
+    const onOpen = vi.fn()
+    render(<TargetList accessToken="tok" onOpen={onOpen} />)
+
+    const link = await screen.findByRole('link', { name: /Joe's Coffee/ })
+    expect(link.getAttribute('href')).toBe('/targets/t1')
+    await userEvent.click(link)
+    expect(onOpen).toHaveBeenCalledWith('t1')
+  })
+})
