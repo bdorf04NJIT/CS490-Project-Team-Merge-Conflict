@@ -166,3 +166,43 @@ def create_target(engine, *, owner_id, payload):
             "created_at": target.created_at.isoformat(),
         }
     return result
+
+
+UPDATABLE_FIELDS = {"name", "source_url"}
+
+
+def validate_target_update(payload):
+    # Only name and source_url may change. Ownership, id, and platform are never client-editable.
+    if not isinstance(payload, dict) or not payload or not set(payload) <= UPDATABLE_FIELDS:
+        raise ValidationError("Provide only name and/or source_url to update.")
+    errors, values = {}, {}
+    if "name" in payload:
+        name = _text(payload, "name")
+        if not name:
+            errors["name"] = MESSAGES["name_missing"]
+        elif len(name) > MAX_NAME:
+            errors["name"] = MESSAGES["name_long"]
+        values["name"] = name
+    if "source_url" in payload:
+        source_url = _text(payload, "source_url")
+        url_error = source_url_error(source_url)
+        if url_error:
+            errors["source_url"] = url_error
+        values["source_url"] = source_url
+    if errors:
+        raise ValidationError("Some target details need fixing.", fields=errors)
+    return values
+
+
+def update_target(engine, *, owner_id, target_id, payload):
+    """Update a target only if owner_id owns it.
+
+    Ownership is checked BEFORE the body is validated, so a non-owner always gets
+    the same NotFound as a missing id and learns nothing from validation errors.
+    """
+    with Session(engine) as session, session.begin():
+        row = find_owned_target(session, owner_id=owner_id, target_id=target_id)
+        for field, value in validate_target_update(payload).items():
+            setattr(row, field, value)
+        session.flush()
+        return _summary(row)
