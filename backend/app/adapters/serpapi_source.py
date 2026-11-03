@@ -69,6 +69,7 @@ class SerpApiGoogleMapsSource:
         max_pages=1,
         quota_preflight=False,
         clock=monotonic,
+        extra_sorts=(),
     ):
         # Existing single-key callers remain supported.
         keys = [api_key] if isinstance(api_key, str) else list(api_key)
@@ -81,6 +82,10 @@ class SerpApiGoogleMapsSource:
         if not isinstance(max_pages, int) or not 1 <= max_pages <= 10:
             raise ValueError("SERPAPI_MAX_PAGES must be between 1 and 10")
         self._max_pages = max_pages
+        # Some SerpApi plans return one short page with no next_page_token. Each
+        # sort order returns a different slice of real reviews, so extra passes
+        # widen the dataset without fabricating anything.
+        self._extra_sorts = tuple(extra_sorts)
 
     @staticmethod
     def _request(url):
@@ -172,11 +177,30 @@ class SerpApiGoogleMapsSource:
         """
         del target_id
         locator = extract_serpapi_locator(source_url)
+        reviews = self._collect(locator)
+        seen_ids = {r.get("review_id") for r in reviews if r.get("review_id")}
+        for sort in self._extra_sorts:
+            try:
+                extra = self._collect(locator, sort_by=sort)
+            except IngestionUnavailable:
+                # Keep the real reviews already collected instead of failing the run.
+                break
+            for review in extra:
+                review_id = review.get("review_id")
+                # Without an id a row can't be told apart from one we already have.
+                if review_id and review_id not in seen_ids:
+                    seen_ids.add(review_id)
+                    reviews.append(review)
+        return RawReviewBatch(rows=reviews, source_kind="serpapi_google_maps")
+
+    def _collect(self, locator, sort_by=None):
         reviews = []
         token = None
         seen_tokens = set()
         for _ in range(self._max_pages):
             params = {"engine": "google_maps_reviews", "hl": "en", **locator}
+            if sort_by:
+                params["sort_by"] = sort_by
             if token:
                 params["next_page_token"] = token
             data = self._search(params)
@@ -186,4 +210,4 @@ class SerpApiGoogleMapsSource:
             if not isinstance(token, str) or not token or token in seen_tokens:
                 break
             seen_tokens.add(token)
-        return RawReviewBatch(rows=reviews, source_kind="serpapi_google_maps")
+        return reviews
