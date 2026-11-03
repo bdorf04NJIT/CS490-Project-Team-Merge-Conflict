@@ -120,13 +120,20 @@ export async function getTarget(accessToken: string, id: string): Promise<Target
   return { ...body, latest_ingestion: body.latest_ingestion ?? null } as TargetWorkspace
 }
 
-export type IngestionRequest = { target_id: string; status: string }
+export type IngestionRequest = {
+  target_id: string
+  status: string
+  run_status?: 'succeeded' | 'partial' | 'failed'
+  imported_count?: number
+  skipped_count?: number
+}
 
 const INGEST_MESSAGES: Record<number, string> = {
   400: "This target's source can't be ingested. Check that it has a valid Google Maps URL.",
   401: 'Your session has expired. Please sign in again.',
   404: "This analysis target doesn't exist or you don't have access to it.",
   503: "Review ingestion isn't available right now. Please try again later.",
+  422: 'The source did not return usable written reviews.',
 }
 const INGEST_FALLBACK = 'Unable to start ingestion right now. Please try again.'
 

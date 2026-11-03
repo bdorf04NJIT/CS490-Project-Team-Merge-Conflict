@@ -38,6 +38,12 @@ class IngestionUnavailable(AppError):
     message = "Review ingestion isn't available right now. Please try again later."
 
 
+class IngestionFailed(AppError):
+    status = 422
+    code = "INGESTION_FAILED"
+    message = "No usable review data could be imported."
+
+
 def _body(code, message, fields=None):
     error = {"code": code, "message": message}
     if fields:

@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from flask import Flask
 
 from .adapters.review_source import UnconfiguredReviewSource
+from .adapters.serpapi_source import SerpApiGoogleMapsSource
 from .database import init_database
 from .errors import register_error_handlers
 from .routes import bp
@@ -19,6 +20,7 @@ def create_app(config=None):
     app.config["DATABASE_URL"] = os.environ.get("DATABASE_URL", "")
     if config:
         app.config.update(config)
+    app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 * 1024
     url = app.config["SUPABASE_URL"]
     if not url:
         raise RuntimeError("Set SUPABASE_URL in backend/.env")
@@ -28,6 +30,9 @@ def create_app(config=None):
     )
     register_error_handlers(app)
     init_database(app)
-    app.extensions.setdefault("review_source", UnconfiguredReviewSource())
+    key = os.environ.get("SERPAPI_API_KEY", "").strip()
+    app.extensions.setdefault(
+        "review_source", SerpApiGoogleMapsSource(key) if key else UnconfiguredReviewSource()
+    )
     app.register_blueprint(bp)
     return app
