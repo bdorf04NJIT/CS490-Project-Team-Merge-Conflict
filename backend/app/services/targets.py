@@ -1,6 +1,7 @@
 import re
 from urllib.parse import urlsplit
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..errors import ValidationError
@@ -89,6 +90,30 @@ def validate_target(payload):
     if errors:
         raise ValidationError("Some target details need fixing.", fields=errors)
     return {"name": name, "platform": PLATFORM, "source_url": source_url}
+
+
+def list_targets(engine, *, owner_id):
+    """Return only the targets owned by owner_id, newest first.
+
+    The ownership filter is applied in the database query, never in the caller.
+    owner_id is intentionally omitted from the result: the caller already knows it.
+    """
+    with Session(engine) as session:
+        rows = session.scalars(
+            select(AnalysisTarget)
+            .where(AnalysisTarget.owner_id == owner_id)
+            .order_by(AnalysisTarget.created_at.desc(), AnalysisTarget.id)
+        ).all()
+        return [
+            {
+                "id": row.id,
+                "name": row.name,
+                "platform": row.platform,
+                "source_url": row.source_url,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ]
 
 
 def create_target(engine, *, owner_id, payload):

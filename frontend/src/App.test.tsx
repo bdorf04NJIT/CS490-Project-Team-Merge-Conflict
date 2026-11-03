@@ -23,10 +23,10 @@ beforeEach(() => {
   })
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue({
+    vi.fn(async (url: string) => ({
       ok: true,
-      json: async () => ({ user_id: 'verified-user' }),
-    }),
+      json: async () => (url === '/api/targets' ? { targets: [] } : { user_id: 'verified-user' }),
+    })),
   )
 })
 afterEach(() => {
@@ -97,8 +97,16 @@ test('uses refreshed tokens and clears identity after an external sign-out', asy
   await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })
   act(() => notify('TOKEN_REFRESHED', { ...session, access_token: 'refreshed-token' }))
   await waitFor(() =>
-    expect(fetch).toHaveBeenLastCalledWith(
+    expect(fetch).toHaveBeenCalledWith(
       '/api/me',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer refreshed-token' },
+      }),
+    ),
+  )
+  await waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/targets',
       expect.objectContaining({
         headers: { Authorization: 'Bearer refreshed-token' },
       }),

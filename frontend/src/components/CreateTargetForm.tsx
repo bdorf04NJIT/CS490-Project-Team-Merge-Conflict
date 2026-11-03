@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { createTarget, PLATFORM, TargetError } from '../api/targets'
 import type { AnalysisTarget, FieldErrors } from '../api/targets'
 
-type Props = { accessToken: string }
+type Props = { accessToken: string; onCreated?: () => void }
 
 const inputBase =
   'w-full rounded-lg border bg-white px-3.5 py-3 text-base text-slate-900 shadow-xs outline-none transition placeholder:text-slate-400 focus:ring-3'
@@ -23,7 +23,7 @@ function FieldMessage({ id, message }: { id: string; message?: string }) {
   ) : null
 }
 
-export default function CreateTargetForm({ accessToken }: Props) {
+export default function CreateTargetForm({ accessToken, onCreated }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
@@ -44,7 +44,9 @@ export default function CreateTargetForm({ accessToken }: Props) {
 
     setBusy(true)
     try {
-      setCreated(await createTarget(accessToken, { name, sourceUrl }))
+      const target = await createTarget(accessToken, { name, sourceUrl })
+      setCreated(target)
+      onCreated?.()
     } catch (e) {
       if (e instanceof TargetError) {
         setFieldErrors(e.fields)
