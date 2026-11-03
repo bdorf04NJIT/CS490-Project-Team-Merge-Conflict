@@ -84,6 +84,7 @@ If a PR fails on **Format check**, run the format command for that side and push
 ## Team docs
 
 - [Coding standards](docs/coding-standards.md)
+- [UI/UX context and conventions](docs/ui-ux-context.md)
 - [Data and security guardrails](docs/data-and-security-guardrails.md)
 - [AI-assisted development and review](docs/ai-assisted-development.md)
 - [Local setup guide](docs/local-env-setup-guide.md)
