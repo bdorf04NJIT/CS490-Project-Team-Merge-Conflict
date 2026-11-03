@@ -51,6 +51,12 @@ Keep database credentials, Supabase secret/service-role keys, ingestion keys, an
 
 Do not commit secrets or include credentials or tokens in logs or error messages.
 
+## Row level security (RLS)
+
+The frontend's Supabase publishable key is public, and Supabase's Data API lets that key read and write tables directly unless RLS is on. All ReviewLens data goes through Flask, so every app table has RLS enabled with no policies. That blocks Data API access, while Flask is unaffected because it connects with `DATABASE_URL` as the table owner.
+
+`flask --app app init-db` enables RLS on every app table. New tables must also have RLS on. To confirm, check the Supabase security advisor, or request `<SUPABASE_URL>/rest/v1/reviews?select=id` with only the publishable key: it must return no rows.
+
 ## How to test isolation
 
 Use pytest with two signed-in users, User A and User B, each with their own targets, runs, and reviews. Test backend requests directly, using isolated test data and mocked external services.
