@@ -32,6 +32,12 @@ class ValidationError(AppError):
     message = "Provide only name, platform, and a valid HTTP(S) source_url. Ownership is assigned automatically."
 
 
+class IngestionUnavailable(AppError):
+    status = 503
+    code = "INGESTION_UNAVAILABLE"
+    message = "Review ingestion isn't available right now. Please try again later."
+
+
 def _body(code, message, fields=None):
     error = {"code": code, "message": message}
     if fields:

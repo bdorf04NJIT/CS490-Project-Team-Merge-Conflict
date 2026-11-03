@@ -44,6 +44,31 @@ def is_google_maps_url(url):
     return False
 
 
+def source_url_error(source_url):
+    """Return a user-facing message if source_url is not a usable Google Maps URL."""
+    if not source_url:
+        return MESSAGES["url_missing"]
+    if len(source_url) > MAX_URL:
+        return MESSAGES["url_long"]
+    try:
+        url = urlsplit(source_url)
+        usable = (
+            url.scheme in {"http", "https"}
+            and bool(url.hostname)
+            and not url.username
+            and not url.password
+            and " " not in source_url
+        )
+        _ = url.port  # invalid port numbers raise ValueError
+    except ValueError:
+        usable = False
+    if not usable:
+        return MESSAGES["url_invalid"]
+    if not is_google_maps_url(url):
+        return MESSAGES["url_not_maps"]
+    return None
+
+
 def _text(payload, field):
     value = payload.get(field)
     return value.strip() if isinstance(value, str) else ""
@@ -62,27 +87,9 @@ def validate_target(payload):
         errors["name"] = MESSAGES["name_long"]
 
     source_url = _text(payload, "source_url")
-    if not source_url:
-        errors["source_url"] = MESSAGES["url_missing"]
-    elif len(source_url) > MAX_URL:
-        errors["source_url"] = MESSAGES["url_long"]
-    else:
-        try:
-            url = urlsplit(source_url)
-            usable = (
-                url.scheme in {"http", "https"}
-                and bool(url.hostname)
-                and not url.username
-                and not url.password
-                and " " not in source_url
-            )
-            _ = url.port  # invalid port numbers raise ValueError
-        except ValueError:
-            usable = False
-        if not usable:
-            errors["source_url"] = MESSAGES["url_invalid"]
-        elif not is_google_maps_url(url):
-            errors["source_url"] = MESSAGES["url_not_maps"]
+    url_error = source_url_error(source_url)
+    if url_error:
+        errors["source_url"] = url_error
 
     if payload.get("platform") != PLATFORM:
         errors["platform"] = MESSAGES["platform"]
@@ -117,21 +124,26 @@ def list_targets(engine, *, owner_id):
         return [_summary(row) for row in rows]
 
 
-def get_target(engine, *, owner_id, target_id):
-    """Return one target only if owner_id owns it.
+def find_owned_target(session, *, owner_id, target_id):
+    """Load a target by id and owner in one query, or raise NotFound.
 
-    The id and the owner are matched in the same query, so another user's target
-    and a target that does not exist both raise the same NotFound. A caller can
-    therefore not learn whether someone else's id exists.
+    Another user's target and a target that does not exist raise the same
+    NotFound, so a caller cannot learn whether someone else's id exists.
     """
+    row = session.scalars(
+        select(AnalysisTarget).where(
+            AnalysisTarget.id == target_id, AnalysisTarget.owner_id == owner_id
+        )
+    ).one_or_none()
+    if row is None:
+        raise NotFound("We couldn't find that analysis target.")
+    return row
+
+
+def get_target(engine, *, owner_id, target_id):
+    """Return one target only if owner_id owns it (see find_owned_target)."""
     with Session(engine) as session:
-        row = session.scalars(
-            select(AnalysisTarget).where(
-                AnalysisTarget.id == target_id, AnalysisTarget.owner_id == owner_id
-            )
-        ).one_or_none()
-        if row is None:
-            raise NotFound("We couldn't find that analysis target.")
+        row = find_owned_target(session, owner_id=owner_id, target_id=target_id)
         # Ingestion runs are recorded starting in S1-023; until then there is none to report.
         return {**_summary(row), "latest_ingestion": None}
 

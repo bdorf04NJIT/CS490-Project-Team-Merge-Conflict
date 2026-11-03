@@ -5,6 +5,7 @@ import jwt
 from dotenv import load_dotenv
 from flask import Flask
 
+from .adapters.review_source import UnconfiguredReviewSource
 from .database import init_database
 from .errors import register_error_handlers
 from .routes import bp
@@ -27,5 +28,6 @@ def create_app(config=None):
     )
     register_error_handlers(app)
     init_database(app)
+    app.extensions.setdefault("review_source", UnconfiguredReviewSource())
     app.register_blueprint(bp)
     return app
