@@ -70,6 +70,8 @@ class SerpApiGoogleMapsSource:
         quota_preflight=False,
         clock=monotonic,
         extra_sorts=(),
+        min_reviews=0,
+        max_topics=0,
     ):
         # Existing single-key callers remain supported.
         keys = [api_key] if isinstance(api_key, str) else list(api_key)
@@ -86,6 +88,10 @@ class SerpApiGoogleMapsSource:
         # sort order returns a different slice of real reviews, so extra passes
         # widen the dataset without fabricating anything.
         self._extra_sorts = tuple(extra_sorts)
+        # If the sorts still fall short, the place's top review topics (e.g.
+        # "drive thru") each return their own slice of real reviews.
+        self._min_reviews = min_reviews
+        self._max_topics = max_topics
 
     @staticmethod
     def _request(url):
@@ -177,37 +183,61 @@ class SerpApiGoogleMapsSource:
         """
         del target_id
         locator = extract_serpapi_locator(source_url)
-        reviews = self._collect(locator)
+        reviews, topics = self._collect(locator)
         seen_ids = {r.get("review_id") for r in reviews if r.get("review_id")}
-        for sort in self._extra_sorts:
-            try:
-                extra = self._collect(locator, sort_by=sort)
-            except IngestionUnavailable:
-                # Keep the real reviews already collected instead of failing the run.
-                break
-            for review in extra:
+
+        def add_new(rows):
+            for review in rows:
                 review_id = review.get("review_id")
                 # Without an id a row can't be told apart from one we already have.
                 if review_id and review_id not in seen_ids:
                     seen_ids.add(review_id)
                     reviews.append(review)
+
+        extra_passes = [{"sort_by": sort} for sort in self._extra_sorts]
+        extra_passes += [{"topic_id": t} for t in _top_topic_ids(topics, self._max_topics)]
+        for params in extra_passes:
+            if "topic_id" in params and len(reviews) >= self._min_reviews:
+                break
+            try:
+                extra, _ = self._collect(locator, **params)
+            except IngestionUnavailable:
+                # Keep the real reviews already collected instead of failing the run.
+                break
+            add_new(extra)
         return RawReviewBatch(rows=reviews, source_kind="serpapi_google_maps")
 
-    def _collect(self, locator, sort_by=None):
+    def _collect(self, locator, **extra_params):
         reviews = []
+        topics = []
         token = None
         seen_tokens = set()
         for _ in range(self._max_pages):
-            params = {"engine": "google_maps_reviews", "hl": "en", **locator}
-            if sort_by:
-                params["sort_by"] = sort_by
+            params = {"engine": "google_maps_reviews", "hl": "en", **locator, **extra_params}
             if token:
                 params["next_page_token"] = token
             data = self._search(params)
             reviews.extend(data["reviews"])
+            if not topics and isinstance(data.get("topics"), list):
+                topics = data["topics"]
             page = data.get("serpapi_pagination")
             token = page.get("next_page_token") if isinstance(page, dict) else None
             if not isinstance(token, str) or not token or token in seen_tokens:
                 break
             seen_tokens.add(token)
-        return reviews
+        return reviews, topics
+
+
+def _top_topic_ids(topics, limit):
+    """Most mentioned topics first; ignore anything that isn't a usable topic."""
+    usable = [
+        t
+        for t in topics
+        if isinstance(t, dict) and isinstance(t.get("id"), str) and t["id"].strip()
+    ]
+
+    def mentions(topic):
+        value = topic.get("mentions")
+        return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+    return [t["id"] for t in sorted(usable, key=mentions, reverse=True)[:limit]]

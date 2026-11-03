@@ -92,3 +92,25 @@ def test_real_source_batch_is_normalized_and_persisted(client, auth_header):
     assert response.get_json()["run_status"] == "succeeded"
     reviews = client.get(f"/api/targets/{target_id}/reviews", headers=auth_header("user-a"))
     assert reviews.get_json()["reviews"][0]["text"] == "Excellent"
+
+
+def test_reingesting_saves_only_reviews_not_already_stored(client, auth_header):
+    target_id = make_target(client, auth_header)
+    batches = [["g1", "g2"], ["g2", "g3"]]
+
+    class FakeProvider:
+        def submit(self, *, target_id, source_url):
+            ids = batches.pop(0)
+            rows = [{"snippet": f"Review {i}", "rating": 4, "review_id": i} for i in ids]
+            return RawReviewBatch(rows=rows, source_kind="serpapi_google_maps")
+
+    client.application.extensions["review_source"] = FakeProvider()
+    url = f"/api/targets/{target_id}/ingestions"
+    assert client.post(url, headers=auth_header("user-a")).get_json()["imported_count"] == 2
+    assert client.post(url, headers=auth_header("user-a")).get_json()["imported_count"] == 1
+    reviews = client.get(f"/api/targets/{target_id}/reviews", headers=auth_header("user-a"))
+    assert sorted(x["source_review_id"] for x in reviews.get_json()["reviews"]) == [
+        "g1",
+        "g2",
+        "g3",
+    ]
