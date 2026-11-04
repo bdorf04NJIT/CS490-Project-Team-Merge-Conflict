@@ -3,6 +3,7 @@ from flask import Blueprint, current_app, g, jsonify, request
 from .auth import require_auth
 from .services.ingestion import import_supplied_reviews, start_ingestion
 from .services.review_storage import list_reviews
+from .services.review_summary import summarize_reviews
 from .services.targets import create_target, get_target, list_targets, update_target
 
 bp = Blueprint("api", __name__, url_prefix="/api")
@@ -106,3 +107,13 @@ def get_target_reviews(target_id):
         offset=offset,
     )
     return jsonify(reviews=rows)
+
+
+@bp.get("/targets/<target_id>/summary")
+@require_auth
+def get_target_summary(target_id):
+    # Computed from persisted reviews only; another user's target returns 404.
+    summary = summarize_reviews(
+        current_app.extensions["database"], owner_id=g.user_id, target_id=target_id
+    )
+    return jsonify(summary)

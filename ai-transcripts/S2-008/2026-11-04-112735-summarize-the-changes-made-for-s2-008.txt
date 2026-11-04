@@ -1,0 +1,64 @@
+
+> Summarize the changes made for S2-008
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● S2-008 adds a backend endpoint that summarizes each target's saved reviews. It
+  isn't committed yet. These changes are on feature/S2-008-review-summary:
+
+  New endpoint: GET /api/targets/<id>/summary
+
+  Added in routes.py:112-119 (backend/app/routes.py#L112-L119). It requires
+  sign-in (require_auth) and only works for targets the signed-in user owns. It
+  returns:
+  - target_id
+  - review_count
+  - average_rating, rounded to 2 decimals, or null if the target has no reviews
+  - rating_distribution: how many reviews have each star rating ({"1": n, ...,
+    "5": n})
+  - latest_ingestion: the result of the most recent import, taken from the
+    existing latest_run
+
+  New service: review_summary.py (backend/app/services/review_summary.py)
+
+  - active_reviews(owner_id, target_id) is a query for all saved reviews of one
+    target. The owner check is built into the query itself, so another user's
+    target returns no rows even if a caller forgets to check ownership. Q&A is
+    meant to use this same query, so the summary and the answers always cover
+    the same reviews.
+  - summarize_reviews(...) first calls find_owned_target, so a missing target or
+    someone else's target gets a 404. It then counts the reviews, averages the
+    ratings and groups them by star rating in SQL.
+  - Behaviour details:
+    - A fractional rating like 4.5 counts toward the 4-star bucket, but the
+      average still uses the exact value.
+    - Rows skipped during import were never saved, so they aren't counted.
+    - A failed import doesn't erase the reviews saved by earlier imports.
+
+  Tests: test_review_summary.py (backend/tests/test_review_summary.py)
+
+  I read the tests but haven't run them in this session. They cover:
+  - The count, average and distribution for a known set of ratings, plus
+    fractional ratings and a target with no reviews.
+  - Adding or deleting saved reviews changes the summary.
+  - Skipped rows and failed imports.
+  - Each target's summary uses only its own reviews, and active_reviews returns
+    the same count as the summary.
+  - Ownership:
+    - User A can't summarize User B's target; it raises NotFound.
+    - A missing target also raises NotFound.
+  - Through the real HTTP endpoint:
+    - The owner gets a correct summary after a CSV import with one bad row.
+    - Another user gets a 404 with no data leaked.
+    - A request without sign-in gets a 401.
+
+  Docs
+
+  README.md (README.md#L56-L61) now describes the endpoint and notes that the
+  workspace doesn't show the summary yet; that's planned for S2-006.
+
+  Unrelated change
+
+  frontend/.gitignore now ignores .env. This has nothing to do with S2-008, and
+  the file is missing its final newline. You may want to commit it separately or
+  leave it out of this PR.
