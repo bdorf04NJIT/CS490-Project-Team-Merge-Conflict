@@ -183,3 +183,42 @@ export async function startIngestion(
   }
   return response.json()
 }
+
+export const STAR_VALUES = ['5', '4', '3', '2', '1'] as const
+
+export type ReviewSummary = {
+  review_count: number
+  average_rating: number | null
+  rating_distribution: Record<(typeof STAR_VALUES)[number], number>
+}
+
+const SUMMARY_FALLBACK = 'Unable to load the review summary right now. Please try again.'
+
+function isReviewSummary(body: unknown): body is ReviewSummary {
+  const summary = body as Partial<ReviewSummary> | null
+  return (
+    typeof summary?.review_count === 'number' &&
+    (summary.average_rating === null || typeof summary.average_rating === 'number') &&
+    STAR_VALUES.every((star) => typeof summary.rating_distribution?.[star] === 'number')
+  )
+}
+
+export async function getReviewSummary(
+  accessToken: string,
+  targetId: string,
+): Promise<ReviewSummary> {
+  let response: Response
+  try {
+    response = await fetch(`/api/targets/${encodeURIComponent(targetId)}/summary`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+  } catch {
+    throw new TargetError(0, 'Unable to connect. Check your connection and try again.')
+  }
+  if (!response.ok) {
+    throw new TargetError(response.status, GET_MESSAGES[response.status] ?? SUMMARY_FALLBACK)
+  }
+  const body: unknown = await response.json()
+  if (!isReviewSummary(body)) throw new TargetError(response.status, SUMMARY_FALLBACK)
+  return body
+}

@@ -47,6 +47,43 @@ describe('TargetWorkspace', () => {
     expect(await screen.findByText('Last ingestion failed')).toBeTruthy()
   })
 
+  it('shows the review summary and reviews once an ingestion has run', async () => {
+    const body = { ...TARGET, latest_ingestion: { status: 'succeeded' } }
+    const summary = {
+      target_id: 't1',
+      review_count: 5,
+      average_rating: 3.4,
+      rating_distribution: { '1': 1, '2': 1, '3': 0, '4': 1, '5': 2 },
+      latest_ingestion: { status: 'succeeded' },
+    }
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        url.endsWith('/summary')
+          ? reply(200, summary)
+          : url.endsWith('/reviews')
+            ? reply(200, { reviews: [] })
+            : reply(200, body),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
+
+    expect(await screen.findByRole('heading', { name: 'Review summary' })).toBeTruthy()
+    expect(await screen.findByText('3.4')).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledWith('/api/targets/t1/summary', {
+      headers: { Authorization: 'Bearer tok' },
+    })
+  })
+
+  it('does not request a summary before any ingestion', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(reply(200, TARGET))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
+    await screen.findByRole('heading', { name: "Joe's Coffee" })
+    expect(screen.queryByRole('heading', { name: 'Review summary' })).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('shows a generic denial and no target data for another user or unknown id', async () => {
     const body = { error: { code: 'NOT_FOUND', message: "We couldn't find that analysis target." } }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(404, body)))
