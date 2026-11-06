@@ -33,7 +33,7 @@ describe('TargetWorkspace', () => {
     const source = screen.getByRole('link', { name: TARGET.source_url })
     expect(source.getAttribute('href')).toBe(TARGET.source_url)
     expect(source.getAttribute('rel')).toContain('noopener')
-    expect(screen.getByText('No reviews have been ingested yet.')).toBeTruthy()
+    expect(screen.getByText(/No reviews have been ingested yet/)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Start ingestion' })).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith('/api/targets/t1', {
       headers: { Authorization: 'Bearer tok-123' },
@@ -45,6 +45,95 @@ describe('TargetWorkspace', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, body)))
     render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
     expect(await screen.findByText('Last ingestion failed')).toBeTruthy()
+  })
+
+  it.each([
+    ['succeeded', 'Last ingestion succeeded', 'Added 4 new reviews.'],
+    ['partial', 'Last ingestion partially succeeded', "4 of 5 records couldn't be used"],
+    ['failed', 'Last ingestion failed', 'The source did not respond.'],
+  ])('shows a persisted %s run from the workspace response', async (status, label, detail) => {
+    const run = {
+      status,
+      total_count: status === 'failed' ? 0 : 5,
+      imported_count: status === 'failed' ? 0 : 4,
+      skipped_count: status === 'partial' ? 4 : 0,
+      message: status === 'failed' ? 'The source did not respond.' : 'Import succeeded.',
+      completed_at: '2026-11-06T15:04:00+00:00',
+    }
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        url.endsWith('/summary')
+          ? reply(500)
+          : url.endsWith('/reviews')
+            ? reply(200, { reviews: [] })
+            : reply(200, { ...TARGET, latest_ingestion: run }),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
+    expect(await screen.findByText(label)).toBeTruthy()
+    expect(document.body.textContent).toContain(detail)
+  })
+
+  it('reloads the persisted status after a refused ingestion and keeps the error visible', async () => {
+    const succeeded = { ...TARGET, latest_ingestion: { status: 'succeeded' } }
+    const failed = { ...TARGET, latest_ingestion: { status: 'failed', message: 'Try later.' } }
+    let workspace = succeeded
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        workspace = failed
+        return Promise.resolve(reply(503, { error: {} }))
+      }
+      if (url.endsWith('/summary') || url.endsWith('/reviews')) return Promise.resolve(reply(500))
+      return Promise.resolve(reply(200, workspace))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
+
+    expect(await screen.findByText('Last ingestion succeeded')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'Start ingestion' }))
+
+    expect(await screen.findByText('Last ingestion failed')).toBeTruthy()
+    expect(screen.queryByText('Last ingestion succeeded')).toBeNull()
+    expect(screen.getByText(/isn't available right now/)).toBeTruthy()
+    const workspaceLoads = fetchMock.mock.calls.filter(([url]) => url === '/api/targets/t1')
+    expect(workspaceLoads).toHaveLength(2)
+  })
+
+  it('does not reload the workspace when the session has expired', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(reply(200, TARGET))
+      .mockResolvedValueOnce(reply(401, { error: {} }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Start ingestion' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('session has expired')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports a partially successful ingestion with an amber notice', async () => {
+    const partial = {
+      target_id: 't1',
+      status: 'accepted',
+      run_status: 'partial',
+      imported_count: 3,
+      skipped_count: 2,
+    }
+    const fetchMock = vi.fn((url: string, init?: RequestInit) =>
+      Promise.resolve(
+        init?.method === 'POST'
+          ? reply(200, partial)
+          : url.endsWith('/summary') || url.endsWith('/reviews')
+            ? reply(500)
+            : reply(200, TARGET),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Start ingestion' }))
+    const notice = await screen.findByText('Imported 3 reviews (2 skipped).')
+    expect(notice.className).toContain('bg-amber-50')
   })
 
   it('shows the review summary and reviews once an ingestion has run', async () => {
@@ -179,6 +268,7 @@ describe('TargetWorkspace', () => {
   ])('shows a clear error when ingestion is refused with %i', async (status, text) => {
     const fetchMock = vi
       .fn()
+      .mockResolvedValue(reply(200, TARGET))
       .mockResolvedValueOnce(reply(200, TARGET))
       .mockResolvedValueOnce(reply(status, { error: { message: 'internal detail' } }))
     vi.stubGlobal('fetch', fetchMock)

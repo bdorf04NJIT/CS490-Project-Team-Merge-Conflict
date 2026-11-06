@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import IngestionStatus from '../components/IngestionStatus'
 import ReviewCsvImport from '../components/ReviewCsvImport'
 import ReviewList from '../components/ReviewList'
 import ReviewSummary from '../components/ReviewSummary'
@@ -6,13 +7,11 @@ import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets
 import type { TargetWorkspace as Workspace } from '../api/targets'
 
 type Props = { accessToken: string; targetId: string; onBack: () => void }
-type Result = { key: string; target: Workspace | null; error: string }
-type Ingest = { targetId: string; state: 'submitting' | 'accepted' | 'error'; message: string }
-
-const STATUS_LABELS: Record<string, string> = {
-  processing: 'Ingestion in progress',
-  succeeded: 'Last ingestion succeeded',
-  failed: 'Last ingestion failed',
+type Result = { key: string; targetId: string; target: Workspace | null; error: string }
+type Ingest = {
+  targetId: string
+  state: 'submitting' | 'accepted' | 'partial' | 'error'
+  message: string
 }
 
 export default function TargetWorkspace({ accessToken, targetId, onBack }: Props) {
@@ -25,20 +24,24 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
     let cancelled = false
     getTarget(accessToken, targetId)
       .then((target) => {
-        if (!cancelled) setResult({ key: requestKey, target, error: '' })
+        if (!cancelled) setResult({ key: requestKey, targetId, target, error: '' })
       })
       .catch((e: unknown) => {
         if (cancelled) return
         const error = e instanceof TargetError ? e.message : 'Unable to open this target right now.'
         // Keep no target data around after a failure, so a denied id shows nothing.
-        setResult({ key: requestKey, target: null, error })
+        setResult({ key: requestKey, targetId, target: null, error })
       })
     return () => {
       cancelled = true
     }
   }, [accessToken, targetId, requestKey])
 
-  const loading = result === null || result.key !== requestKey
+  // While refreshing an already-open workspace (for example after an ingestion
+  // attempt), keep showing it so panel feedback isn't wiped by a loading screen.
+  const stale = result !== null && result.key !== requestKey
+  const loading =
+    result === null || result.targetId !== targetId || (stale && result.target === null)
   // Ignore ingestion feedback left over from a different target.
   const ingestRequest = ingest?.targetId === targetId ? ingest : null
   const submitting = ingestRequest?.state === 'submitting'
@@ -50,7 +53,7 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
       const response = await startIngestion(accessToken, targetId)
       setIngest({
         targetId,
-        state: 'accepted',
+        state: response.run_status === 'partial' ? 'partial' : 'accepted',
         message: response.run_status
           ? `Imported ${response.imported_count} reviews (${response.skipped_count} skipped).`
           : 'Ingestion started for this target.',
@@ -62,6 +65,11 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
           ? e.message
           : 'Unable to start ingestion right now. Please try again.'
       setIngest({ targetId, state: 'error', message })
+      // The server records a failed run for refused attempts, so reload the persisted
+      // status. Skip it when the request never arrived or the session has expired.
+      if (e instanceof TargetError && e.status !== 0 && e.status !== 401) {
+        setAttempt((n) => n + 1)
+      }
     }
   }
   const backLink = (
@@ -144,10 +152,8 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
         </div>
         <div>
           <dt className="font-medium text-slate-700">Ingestion status</dt>
-          <dd className="mt-0.5 text-slate-600">
-            {ingestion
-              ? (STATUS_LABELS[ingestion.status] ?? ingestion.status)
-              : 'No reviews have been ingested yet.'}
+          <dd>
+            <IngestionStatus ingestion={ingestion} />
           </dd>
         </div>
       </dl>
@@ -168,10 +174,14 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
         >
           {submitting ? 'Starting ingestion...' : 'Start ingestion'}
         </button>
-        {ingestRequest?.state === 'accepted' && (
+        {(ingestRequest?.state === 'accepted' || ingestRequest?.state === 'partial') && (
           <p
             role="status"
-            className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+            className={`mt-3 rounded-lg border px-4 py-3 text-sm ${
+              ingestRequest.state === 'partial'
+                ? 'border-amber-200 bg-amber-50 text-amber-900'
+                : 'border-green-200 bg-green-50 text-green-800'
+            }`}
           >
             {ingestRequest.message}
           </p>
@@ -188,7 +198,7 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
       <ReviewCsvImport
         accessToken={accessToken}
         targetId={targetId}
-        onImported={() => setAttempt((n) => n + 1)}
+        onFinished={() => setAttempt((n) => n + 1)}
       />
       {/* Reviews only exist once an ingestion has run. */}
       {ingestion && (

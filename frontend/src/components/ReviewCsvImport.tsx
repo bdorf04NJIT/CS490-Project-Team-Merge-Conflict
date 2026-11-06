@@ -1,17 +1,20 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 
-type Props = { accessToken: string; targetId: string; onImported: () => void }
+// onFinished runs after any attempt the server answered, so the workspace can reload the
+// persisted ingestion status (failed imports are recorded as failed runs too).
+type Props = { accessToken: string; targetId: string; onFinished: () => void }
 type ImportRun = {
   status: string
   imported_count: number
   skipped_count: number
 }
 
-export default function ReviewCsvImport({ accessToken, targetId, onImported }: Props) {
+export default function ReviewCsvImport({ accessToken, targetId, onFinished }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [summary, setSummary] = useState('')
+  const [partial, setPartial] = useState(false)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -50,14 +53,16 @@ export default function ReviewCsvImport({ accessToken, targetId, onImported }: P
                 ? 'The CSV did not contain usable reviews. Check its columns, review text, and ratings.'
                 : 'Unable to import reviews right now. Please try again.',
         )
+        if (response.status !== 401) onFinished()
         return
       }
       const data: { run: ImportRun } = await response.json()
+      setPartial(data.run.status === 'partial')
       setSummary(
         `Imported ${data.run.imported_count} reviews (${data.run.skipped_count} skipped). Status: ${data.run.status}.`,
       )
       form.reset()
-      onImported()
+      onFinished()
     } catch {
       setError('Unable to connect to the review import service.')
     } finally {
@@ -96,7 +101,10 @@ export default function ReviewCsvImport({ accessToken, targetId, onImported }: P
         </button>
       </form>
       {summary && (
-        <p role="status" className="mt-3 text-sm text-green-800">
+        <p
+          role="status"
+          className={`mt-3 text-sm ${partial ? 'text-amber-900' : 'text-green-800'}`}
+        >
           {summary}
         </p>
       )}
