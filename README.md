@@ -9,13 +9,13 @@ CS 490 capstone, team Merge Conflict.
 
 ## Repo layout
 
-| Folder | What's in it |
-|---|---|
-| `frontend/` | React + Vite + TypeScript + Tailwind app. See [frontend/README.md](frontend/README.md) |
-| `backend/` | Flask API with SQLAlchemy and Supabase Postgres. See [backend/README.md](backend/README.md) |
-| `docs/` | Team standards and the local setup guide |
-| `ai-transcripts/` | AI development transcripts, one folder per story |
-| `.github/workflows/` | CI (`ci.yml`) and the sprint issue importer |
+| Folder               | What's in it                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `frontend/`          | React + Vite + TypeScript + Tailwind app. See [frontend/README.md](frontend/README.md)      |
+| `backend/`           | Flask API with SQLAlchemy and Supabase Postgres. See [backend/README.md](backend/README.md) |
+| `docs/`              | Team standards and the local setup guide                                                    |
+| `ai-transcripts/`    | AI development transcripts, one folder per story                                            |
+| `.github/workflows/` | CI (`ci.yml`) and the sprint issue importer                                                 |
 
 Storage config lives in `backend/.env` (`DATABASE_URL`) and is read by
 `backend/app/database.py`. The frontend calls the backend through the Vite proxy (`/api`
@@ -51,7 +51,10 @@ every step, including Mac and Linux commands and common errors.
    - **Start ingestion** pulls reviews from Google Maps. Needs `SERPAPI_API_KEY`.
    - **Import CSV reviews** uploads your own export. Needs `review_text` and `rating`
      columns.
-4. The workspace shows whether the last ingestion succeeded or failed.
+4. The workspace shows the saved result of the last ingestion: succeeded (green), partially
+   succeeded with some records skipped (amber), or failed with the reason (red). It includes
+   how many new reviews were added and when the run finished, and it reloads after every
+   attempt, including failed ones.
 5. Once reviews are saved, the workspace shows a review summary: how many reviews were
    ingested, the average rating, and how many reviews have each star rating.
 
@@ -68,13 +71,13 @@ Asking questions about the reviews comes in Sprint 2. Details on both review sou
 
 Run these before pushing. CI runs the same commands on every pull request.
 
-| Task | Frontend (in `frontend/`) | Backend (in `backend/`, venv active) |
-|---|---|---|
-| Lint | `npm run lint` | `ruff check .` |
-| Format (fix) | `npm run format` | `ruff format .` |
-| Format (check only) | `npm run format:check` | `ruff format --check .` |
-| Unit tests | `npm test` | `pytest` |
-| Build | `npm run build` | `python -m compileall -q app` |
+| Task                | Frontend (in `frontend/`) | Backend (in `backend/`, venv active) |
+| ------------------- | ------------------------- | ------------------------------------ |
+| Lint                | `npm run lint`            | `ruff check .`                       |
+| Format (fix)        | `npm run format`          | `ruff format .`                      |
+| Format (check only) | `npm run format:check`    | `ruff format --check .`              |
+| Unit tests          | `npm test`                | `pytest`                             |
+| Build               | `npm run build`           | `python -m compileall -q app`        |
 
 Tests and builds need no env files or secrets. Backend tests use fake config and a temporary
 SQLite database. Frontend tests mock the Supabase client.
