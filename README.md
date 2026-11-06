@@ -52,13 +52,14 @@ every step, including Mac and Linux commands and common errors.
    - **Import CSV reviews** uploads your own export. Needs `review_text` and `rating`
      columns.
 4. The workspace shows whether the last ingestion succeeded or failed.
+5. Once reviews are saved, the workspace shows a review summary: how many reviews were
+   ingested, the average rating, and how many reviews have each star rating.
 
-The backend also summarizes each target's saved reviews at `GET /api/targets/<id>/summary`.
-It returns the review count, the average rating, how many reviews have each star rating, and
-the latest ingestion result. Reviews skipped during import are not counted. Like every other
-endpoint, it only returns targets owned by the signed-in user. Q&A will read the same saved
-reviews, so the summary and answers always describe the same reviews. The workspace doesn't
-display the summary yet (S2-006).
+The summary comes from the backend at `GET /api/targets/<id>/summary`, which calculates it
+from the saved reviews. It returns the review count, the average rating, how many reviews have
+each star rating, and the latest ingestion result. Reviews skipped during import are not
+counted. Like every other endpoint, it only returns targets owned by the signed-in user. Q&A
+will read the same saved reviews, so the summary and answers always describe the same reviews.
 
 Asking questions about the reviews comes in Sprint 2. Details on both review sources are in
 [review ingestion](docs/review-ingestion-source.md).

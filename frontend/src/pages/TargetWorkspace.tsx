@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import ReviewCsvImport from '../components/ReviewCsvImport'
 import ReviewList from '../components/ReviewList'
+import ReviewSummary from '../components/ReviewSummary'
 import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
 import type { TargetWorkspace as Workspace } from '../api/targets'
 
@@ -191,7 +192,10 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
       />
       {/* Reviews only exist once an ingestion has run. */}
       {ingestion && (
-        <ReviewList accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
+        <>
+          <ReviewSummary accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
+          <ReviewList accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
+        </>
       )}
     </section>
   )

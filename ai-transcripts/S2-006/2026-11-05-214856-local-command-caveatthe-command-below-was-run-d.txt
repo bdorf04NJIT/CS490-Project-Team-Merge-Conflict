@@ -1,0 +1,670 @@
+
+> /clear
+
+> <ide_opened_file>The user opened the file c:\Users\bdorf\VsCode\NJITSenSem1\C
+  S490\CS490-Project-Team-Merge-Conflict\frontend\.gitignore in the IDE. This
+  may or may not be related to the current task.</ide_opened_file>
+
+> Let's work on S2-006
+  Outcome:
+  The user can see the number of successfully ingested reviews and basic rating
+  information for the active AnalysisTarget.
+
+  Technical Guidance:
+
+  At minimum, display:
+
+  Number of successfully ingested reviews.
+  Basic rating information appropriate to the selected review platform.
+  Examples of appropriate rating information include:
+
+  Average rating.
+  Rating distribution.
+  Counts by rating value.
+  The team does not need to implement every possible metric.
+
+  All displayed values must be calculated from persisted review data.
+
+  Tests should use a known review fixture so expected values can be asserted
+  exactly.
+
+  Rules: S2-BR-001 through S2-BR-004, S2-BR-007
+
+● I'll start by looking at the repo structure and the recent S2-008 work, which
+  is closely related.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The backend summary endpoint already exists (S2-008). Let me check the issue
+  definition, the summary service, and the frontend workspace.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● The backend endpoint from S2-008 already computes everything S2-006 needs, so
+  this is a frontend story. Let me check the business rules and UI guidance.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● I'm adding a getReviewSummary client and a ReviewSummary component above the
+  review list, with fixture-based tests and a README update, starting on a new
+  branch.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the API client:
+
+● Bash(cd "c:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict" && cat >> frontend/src/api/targets.ts <<'EOF'…)
+  ⎿  Updated frontend\src\api\targets.ts (+39 -0)
+      183    }
+      184    return response.json()
+      185  }
+      186 +                                                              
+      187 +export const STAR_VALUES = ['5', '4', '3', '2', '1'] as const 
+      188 +                                                              
+      189 +export type ReviewSummary = {                                 
+      190 +  review_count: number                                        
+      191 +  average_rating: number | null                               
+      192 +  rating_distribution: Record<(typeof STAR_VALUES)[number], nu
+          +mber>                                                         
+      193 +}                                                             
+      194 +                                                              
+      195 +const SUMMARY_FALLBACK = 'Unable to load the review summary ri
+          +ght now. Please try again.'                                   
+      196 +                                                              
+      197 +function isReviewSummary(body: unknown): body is ReviewSummary
+          + {                                                            
+      198 +  const summary = body as Partial<ReviewSummary> | null       
+      199 +  return (                                                    
+      200 +    typeof summary?.review_count === 'number' &&              
+      201 +    (summary.average_rating === null || typeof summary.average
+          +_rating === 'number') &&                                      
+      202 +    STAR_VALUES.every((star) => typeof summary.rating_distribu
+          +tion?.[star] === 'number')                                    
+      203 +  )                                                           
+      204 +}                                                             
+      205 +                                                              
+      206 +export async function getReviewSummary(                       
+      207 +  accessToken: string,                                        
+      208 +  targetId: string,                                           
+      209 +): Promise<ReviewSummary> {                                   
+      210 +  let response: Response                                      
+      211 +  try {                                                       
+      212 +    response = await fetch(`/api/targets/${encodeURIComponent(
+          +targetId)}/summary`, {                                        
+      213 +      headers: { Authorization: `Bearer ${accessToken}` },    
+      214 +    })                                                        
+      215 +  } catch {                                                   
+      216 +    throw new TargetError(0, 'Unable to connect. Check your co
+          +nnection and try again.')                                     
+      217 +  }                                                           
+      218 +  if (!response.ok) {                                         
+      219 +    throw new TargetError(response.status, GET_MESSAGES[respon
+          +se.status] ?? SUMMARY_FALLBACK)                               
+      220 +  }                                                           
+      221 +  const body: unknown = await response.json()                 
+      222 +  if (!isReviewSummary(body)) throw new TargetError(response.s
+          +tatus, SUMMARY_FALLBACK)                                      
+     … 2 more lines (ctrl+o to expand)
+
+● Now the component:
+
+● Write(frontend\src\components\ReviewSummary.tsx)
+  ⎿  Wrote 139 lines to frontend\src\components\ReviewSummary.tsx
+       1 import { useEffect, useState } from 'react'
+       2 import { getReviewSummary, STAR_VALUES, TargetError } from '../a
+         pi/targets'
+       3 import type { ReviewSummary as Summary } from '../api/targets'
+       4
+       5 type Props = { accessToken: string; targetId: string; refreshKey
+         : number }
+       6 type Result = { key: string; summary: Summary | null; error: str
+         ing }
+       7
+     … +132 lines (ctrl+o to expand)
+
+● Wire it into the workspace alongside the review list:
+
+● Bash(cd "c:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend/src/pages" && python - <<'EOF'
+      p='TargetWorkspace.tsx'…)
+  ⎿  Updated frontend\src\pages\TargetWorkspace.tsx (+5 -1)
+      1  import { useEffect, useState } from 'react'
+      2  import ReviewCsvImport from '../components/ReviewCsvImport'
+      3  import ReviewList from '../components/ReviewList'
+      4 +import ReviewSummary from '../components/ReviewSummary'         
+      5  import { getTarget, PLATFORM, startIngestion, TargetError } from
+          '../api/targets'
+      6  import type { TargetWorkspace as Workspace } from '../api/target
+         s'
+      7  
+     ...
+      192        />
+      193        {/* Reviews only exist once an ingestion has run. */}
+      194        {ingestion && (
+      194 -        <ReviewList accessToken={accessToken} targetId={target
+          -Id} refreshKey={attempt} />                                   
+      195 +        <>                                                    
+      196 +          <ReviewSummary accessToken={accessToken} targetId={t
+          +argetId} refreshKey={attempt} />                              
+      197 +          <ReviewList accessToken={accessToken} targetId={targ
+          +etId} refreshKey={attempt} />                                 
+      198 +        </>                                                   
+      199        )}
+      200      </section>
+      201    )
+
+● Now the tests, using the same known fixture as the backend S2-008 tests
+  (ratings 5, 5, 4, 2, 1 → count 5, average 3.4):
+
+● Write(frontend\src\components\ReviewSummary.test.tsx)
+  ⎿  Wrote 129 lines to frontend\src\components\ReviewSummary.test.tsx
+       1 // @vitest-environment jsdom
+       2 import { afterEach, expect, test, vi } from 'vitest'
+       3 import { cleanup, render, screen, within } from '@testing-librar
+         y/react'
+       4 import userEvent from '@testing-library/user-event'
+       5 import ReviewSummary from './ReviewSummary'
+       6
+       7 // Known fixture: the backend summary for persisted ratings [5,
+         5, 4, 2, 1]
+       8 // (the same fixture asserted in backend/tests/test_review_summa
+     … +122 lines (~5 KB) (ctrl+o to expand)
+
+● Add a workspace-level test that the summary appears once reviews have been
+  ingested, and update the README:
+
+● Bash(cd "c:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict" && python - <<'EOF'
+      p='frontend/src/pages/TargetWorkspace.test.tsx'…)
+  ⎿   RUN  v5.0.5 C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Tea
+     m-Merge-Conflict/frontend
+     … +12 lines (ctrl+o to expand)
+  ⎿  Updated README.md (+100 -99)
+        1 -# ReviewLens AI                                               
+        2 -                                                              
+        3 -ReviewLens is a multi-user web app for review analysis. An ana
+          -lyst creates a target (a                                      
+        4 -business on Google Maps), brings in its reviews, and asks ques
+          -tions answered only from those                                
+        5 -reviews. Reviews come from Google Maps through SerpApi, or fro
+          -m a CSV the user uploads. Each                                
+        6 -user can see only their own targets and reviews.              
+        7 -                                                              
+        8 -CS 490 capstone, team Merge Conflict.                         
+        9 -                                                              
+       10 -## Repo layout                                                
+       11 -                                                              
+       12 -| Folder | What's in it |                                     
+       13 -|---|---|                                                     
+       14 -| `frontend/` | React + Vite + TypeScript + Tailwind app. See 
+          -[frontend/README.md](frontend/README.md) |                    
+       15 -| `backend/` | Flask API with SQLAlchemy and Supabase Postgres
+          -. See [backend/README.md](backend/README.md) |                
+       16 -| `docs/` | Team standards and the local setup guide |        
+       17 -| `ai-transcripts/` | AI development transcripts, one folder p
+          -er story |                                                    
+       18 -| `.github/workflows/` | CI (`ci.yml`) and the sprint issue im
+          -porter |                                                      
+       19 -                                                              
+       20 -Storage config lives in `backend/.env` (`DATABASE_URL`) and is
+          - read by                                                      
+       21 -`backend/app/database.py`. The frontend calls the backend thro
+          -ugh the Vite proxy (`/api`                                    
+       22 -goes to `http://127.0.0.1:5000`), so no API URL is hard coded.
+       23 -                                                              
+       24 -## Prerequisites                                              
+       25 -                                                              
+       26 -- Python 3.12 or newer                                        
+       27 -- Node.js 22 LTS (22.22 or newer) and npm                     
+       28 -- Access to the team's Supabase project, as well as dev values
+          -.                                                             
+       29 -- Optional: a SerpApi key, for pulling reviews straight from G
+          -oogle Maps. Get one at                                        
+       30 -  https://serpapi.com/manage-api-key. CSV upload works without
+          - it.                                                          
+       31 -                                                              
+       32 -## Quick start                                                
+       33 -                                                              
+       34 -1. Set up env files. Copy `backend/.env.example` to `backend/.
+          -env` and                                                      
+       35 -   `frontend/.env.example` to `frontend/.env.local`, then fill
+          - in the values shared                                         
+       36 -   privately by the team. Add your SerpApi key as `SERPAPI_API
+          -_KEY` in `backend/.env` if                                    
+       37 -   you have one. Never commit these files.                    
+       38 -2. Start the backend in one terminal. Follow [backend/README.m
+          -d](backend/README.md).                                        
+       39 -3. Start the frontend in a second terminal. Follow [frontend/R
+          -EADME.md](frontend/README.md).                                
+       40 -4. Open the URL Vite prints (usually http://localhost:5173) an
+          -d sign in.                                                    
+     … 159 more lines (ctrl+o to expand)
+  ⎿  Updated frontend\src\pages\TargetWorkspace.test.tsx (+37 -0)
+      47      expect(await screen.findByText('Last ingestion failed')).to
+          BeTruthy()
+      48    })
+      49  
+      50 +  it('shows the review summary and reviews once an ingestion ha
+         +s run', async () => {                                          
+      51 +    const body = { ...TARGET, latest_ingestion: { status: 'succ
+         +eeded' } }                                                     
+      52 +    const summary = {                                          
+      53 +      target_id: 't1',                                         
+      54 +      review_count: 5,                                         
+      55 +      average_rating: 3.4,                                     
+      56 +      rating_distribution: { '1': 1, '2': 1, '3': 0, '4': 1, '5
+         +': 2 },                                                        
+      57 +      latest_ingestion: { status: 'succeeded' },               
+      58 +    }                                                          
+      59 +    const fetchMock = vi.fn((url: string) =>                   
+      60 +      Promise.resolve(                                         
+      61 +        url.endsWith('/summary')                               
+      62 +          ? reply(200, summary)                                
+      63 +          : url.endsWith('/reviews')                           
+      64 +            ? reply(200, { reviews: [] })                      
+      65 +            : reply(200, body),                                
+      66 +      ),                                                       
+      67 +    )                                                          
+      68 +    vi.stubGlobal('fetch', fetchMock)                          
+      69 +    render(<TargetWorkspace accessToken="tok" targetId="t1" onB
+         +ack={() => {}} />)                                             
+      70 +                                                               
+      71 +    expect(await screen.findByRole('heading', { name: 'Review s
+         +ummary' })).toBeTruthy()                                       
+      72 +    expect(await screen.findByText('3.4')).toBeTruthy()        
+      73 +    expect(fetchMock).toHaveBeenCalledWith('/api/targets/t1/sum
+         +mary', {                                                       
+      74 +      headers: { Authorization: 'Bearer tok' },                
+      75 +    })                                                         
+      76 +  })                                                           
+      77 +                                                               
+      78 +  it('does not request a summary before any ingestion', async (
+         +) => {                                                         
+      79 +    const fetchMock = vi.fn().mockResolvedValue(reply(200, TARG
+         +ET))                                                           
+      80 +    vi.stubGlobal('fetch', fetchMock)                          
+      81 +    render(<TargetWorkspace accessToken="tok" targetId="t1" onB
+         +ack={() => {}} />)                                             
+      82 +    await screen.findByRole('heading', { name: "Joe's Coffee" }
+         +)                                                              
+      83 +    expect(screen.queryByRole('heading', { name: 'Review summar
+         +y' })).toBeNull()                                              
+      84 +    expect(fetchMock).toHaveBeenCalledTimes(1)                 
+      85 +  })                                                           
+      86 +                                                               
+     … 3 more lines (ctrl+o to expand)
+
+● Tests, types, and lint pass; just formatting to fix.
+
+● Bash(cd "c:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend" && npx prettier --write src/api/targets.ts
+      src/components/ReviewSummary.…)
+  ⎿  src/api/targets.ts 67ms
+     src/components/ReviewSummary.test.tsx 20ms
+      frontend/src/api/targets.ts | 39 ++++++++++++++++++++++++++++++++++++
+     … +13 lines (ctrl+o to expand)
+  ⎿  Updated frontend\src\api\targets.ts (+39 -39)
+      183    }
+      184    return response.json()
+      185  }
+      186 -                                                              
+      187 -export const STAR_VALUES = ['5', '4', '3', '2', '1'] as const 
+      188 -                                                              
+      189 -export type ReviewSummary = {                                 
+      190 -  review_count: number                                        
+      191 -  average_rating: number | null                               
+      192 -  rating_distribution: Record<(typeof STAR_VALUES)[number], nu
+          -mber>                                                         
+      193 -}                                                             
+      194 -                                                              
+      195 -const SUMMARY_FALLBACK = 'Unable to load the review summary ri
+          -ght now. Please try again.'                                   
+      196 -                                                              
+      197 -function isReviewSummary(body: unknown): body is ReviewSummary
+          - {                                                            
+      198 -  const summary = body as Partial<ReviewSummary> | null       
+      199 -  return (                                                    
+      200 -    typeof summary?.review_count === 'number' &&              
+      201 -    (summary.average_rating === null || typeof summary.average
+          -_rating === 'number') &&                                      
+      202 -    STAR_VALUES.every((star) => typeof summary.rating_distribu
+          -tion?.[star] === 'number')                                    
+      203 -  )                                                           
+      204 -}                                                             
+      205 -                                                              
+      206 -export async function getReviewSummary(                       
+      207 -  accessToken: string,                                        
+      208 -  targetId: string,                                           
+      209 -): Promise<ReviewSummary> {                                   
+      210 -  let response: Response                                      
+      211 -  try {                                                       
+      212 -    response = await fetch(`/api/targets/${encodeURIComponent(
+          -targetId)}/summary`, {                                        
+      213 -      headers: { Authorization: `Bearer ${accessToken}` },    
+      214 -    })                                                        
+      215 -  } catch {                                                   
+      216 -    throw new TargetError(0, 'Unable to connect. Check your co
+          -nnection and try again.')                                     
+      217 -  }                                                           
+      218 -  if (!response.ok) {                                         
+      219 -    throw new TargetError(response.status, GET_MESSAGES[respon
+          -se.status] ?? SUMMARY_FALLBACK)                               
+      220 -  }                                                           
+      221 -  const body: unknown = await response.json()                 
+      222 -  if (!isReviewSummary(body)) throw new TargetError(response.s
+          -tatus, SUMMARY_FALLBACK)                                      
+     … 41 more lines (ctrl+o to expand)
+  ⎿  Updated frontend\src\components\ReviewSummary.test.tsx (+3 -1)
+      116    vi.stubGlobal('fetch', fetchMock)
+      117    render(<ReviewSummary accessToken="tok" targetId="t1" refres
+           hKey={0} />)
+      118  
+      119 -  expect((await screen.findByRole('alert')).textContent).toCon
+          -tain('Unable to load the review summary')                     
+      119 +  expect((await screen.findByRole('alert')).textContent).toCon
+          +tain(                                                         
+      120 +    'Unable to load the review summary',                      
+      121 +  )                                                           
+      122    await userEvent.click(screen.getByRole('button', { name: 'Tr
+           y again' }))
+      123    await screen.findByText('Reviews ingested')
+      124    expect(term('Reviews ingested')).toBe('5')
+
+● S2-006 is done on a new branch, feature/S2-006-review-summary-display, and not
+  committed yet. All 60 frontend tests pass, and type-check, lint and Prettier
+  are clean. I haven't opened it in a browser.
+
+  The S2-008 endpoint (GET /api/targets/<id>/summary) already calculates
+  everything from the saved reviews, so this was frontend-only work. Nothing on
+  the page is recalculated from the review list.
+
+  What changed
+  - API client (targets.ts (frontend/src/api/targets.ts)): new
+    getReviewSummary(). It checks that the response has the expected shape and
+    uses the same error messages as the other calls, so another user's target
+    gets the generic "don't have access" message.
+  - New component (ReviewSummary.tsx
+    (frontend/src/components/ReviewSummary.tsx)) shows:
+    - Reviews ingested: the total count. This is more accurate than the review
+      list's "100+", which stops at 100.
+    - Average rating: shown as, for example, "3.4 out of 5".
+    - Rating distribution: the number of reviews at each star level from 5 down
+      to 1, with a bar for each. Screen readers get labels like "5 stars: 2
+      reviews".
+    - It also has a loading message, an empty message ("No reviews yet. Start
+      ingestion or import a CSV."), and an error message with Try again.
+  - Workspace (TargetWorkspace.tsx (frontend/src/pages/TargetWorkspace.tsx)):
+    the summary appears above the saved reviews once an ingestion has run. It
+    reloads after a live ingestion or a CSV import.
+  - README: added a step describing the summary and removed the "doesn't display
+    the summary yet" note.
+
+  Tests
+  - ReviewSummary.test.tsx (frontend/src/components/ReviewSummary.test.tsx) uses
+    the same fixture as the backend S2-008 tests: ratings 5, 5, 4, 2, 1. It
+    checks for exactly 5 reviews, an average of 3.4, and counts of 2/1/0/1/1
+    from 5 stars down to 1. It also covers a 3.75 average, the empty case,
+    reloading, a denied target, a malformed response with retry, and a network
+    failure.
+  - Two workspace tests check that the summary appears after an ingestion and
+    isn't requested before one.
+
+  Your existing uncommitted change to frontend/.gitignore (adding .env) is still
+  in the working tree, and I left it alone. Previous stories added an AI
+  transcript under ai-transcripts/, and I haven't created one for S2-006. Do you
+  want me to commit and open a PR?
+
+> Explain every change in detail
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Six files changed: five on the frontend plus the README. No backend changes
+  were needed.
+
+  1. API client: frontend/src/api/targets.ts
+
+  I added the code that fetches the summary from the backend, at the end of the
+  file.
+
+  STAR_VALUES = ['5', '4', '3', '2', '1']
+  These are the star levels as strings, because the backend's
+  rating_distribution uses string keys ({"1": n, ..., "5": n}). They're ordered
+  highest first so the component can loop over them directly to show 5 stars at
+  the top. The same constant is used to check the response, so both stay in
+  sync.
+
+  ReviewSummary type
+  Describes the three fields the UI uses: review_count, average_rating (null
+  when there are no reviews) and rating_distribution. The backend also returns
+  target_id and latest_ingestion, which the workspace already gets elsewhere, so
+  the type leaves them out.
+
+  isReviewSummary(body)
+  Checks the response before the UI trusts it:
+  - review_count must be a number.
+  - average_rating must be a number or null.
+  - All five star keys must exist in rating_distribution and be numbers.
+
+  If any of these fail, the request is treated as an error, not shown as blank
+  or broken numbers. getTarget and listReviews already work this way.
+
+  getReviewSummary(accessToken, targetId)
+  Follows the same pattern as the other API functions in the file:
+  1. Request: calls GET /api/targets/<id>/summary with the bearer token. The id
+     goes through encodeURIComponent, so a value like a/../b can't change which
+     URL is called.
+  2. Network failure: if fetch itself fails (offline, server down), it throws
+     "Unable to connect…".
+  3. Error status: reuses the existing GET_MESSAGES:
+     - 401 shows the session-expired message.
+     - 404 shows the generic "doesn't exist or you don't have access" message. A
+       missing target and someone else's target look the same, so nothing about
+       other users' data is revealed.
+     - Anything else shows "Unable to load the review summary right now."
+     - The server's own error text is never shown to the user.
+  4. Bad response: fails the shape check above, so it throws the same fallback
+     message.
+
+  2. New component: frontend/src/components/ReviewSummary.tsx
+
+  Props: accessToken, targetId and refreshKey, the same as ReviewList. The
+  workspace changes refreshKey after an ingestion or CSV import, which makes the
+  summary reload.
+
+  Loading:
+  - A useEffect calls getReviewSummary.
+  - Each request has a key (targetId:refreshKey:retry), and the result is stored
+    along with that key. If the key changes, old data is ignored and the
+    loading state shows again. This means stale numbers from another target or
+    an earlier import are never shown.
+  - A cancelled flag stops a slow earlier request from overwriting the result of
+    a newer one.
+  - The extra retry counter lets Try again start a new request.
+
+  The four states it can show:
+
+  ┌─────────────────────┬───────────────────────────────────────────────────┐
+  │        State        │                What the user sees                 │
+  ├─────────────────────┼───────────────────────────────────────────────────┤
+  │ Loading             │ "Loading review summary..." (role="status", so    │
+  │                     │ screen readers announce it)                       │
+  ├─────────────────────┼───────────────────────────────────────────────────┤
+  │ Error               │ Red alert panel with the message and a Try again  │
+  │                     │ button (role="alert")                             │
+  ├─────────────────────┼───────────────────────────────────────────────────┤
+  │ No reviews          │ "No reviews yet. Start ingestion or import a      │
+  │ (review_count ===   │ CSV." (wording taken from docs/ui-ux-context.md)  │
+  │ 0)                  │                                                   │
+  ├─────────────────────┼───────────────────────────────────────────────────┤
+  │ Has reviews         │ The summary card below                            │
+  └─────────────────────┴───────────────────────────────────────────────────┘
+
+  The heading "Review summary" shows in every state, so the section doesn't
+  appear and disappear while loading.
+
+  The summary card:
+  - Reviews ingested: review_count from the backend. This is the true total of
+    saved reviews. The review list's "100+" label stops at 100 because the list
+    endpoint returns at most 100 reviews.
+  - Average rating: shown as "3.4 out of 5".
+    - It uses Intl.NumberFormat with 1–2 decimal places, so 4 shows as "4.0",
+      3.4 as "3.4" and 3.75 as "3.75".
+    - The backend already rounds to 2 decimals, so the frontend doesn't round
+      any further.
+    - If the average is ever null while the count is above zero (which shouldn't
+      happen), it shows "—".
+  - Rating distribution: one row for each star level from 5 down to 1. Each row
+    has three parts:
+    - A "5 ★" label.
+    - An amber bar showing that star level's share of all reviews. This is
+      calculated from the backend's counts, purely for display.
+    - The exact count.
+
+    Screen readers skip the bar and read a label like "5 stars: 2 reviews" or "1
+    star: 1 review" instead. A small plural() helper picks "star"/"stars" and
+    "review"/"reviews".
+
+  Where the numbers come from: a comment in the code notes that nothing on this
+  card is calculated from the review list. Every number comes from the backend
+  summary, which is calculated from the reviews saved in the database. That
+  covers the "calculated from persisted review data" requirement. It also covers
+  the business rules the backend already handles:
+  - Skipped records are never saved, so they aren't counted.
+  - Failed runs save no reviews.
+  - Fractional ratings like 4.5 count toward the lower whole star (the 4-star
+    row), but the average still uses the exact value.
+
+  3. Workspace: frontend/src/pages/TargetWorkspace.tsx
+
+  There are two small changes:
+  - Import ReviewSummary.
+  - Inside the existing {ingestion && ...} block, render <ReviewSummary>
+    directly above <ReviewList>. Both get the same refreshKey={attempt}.
+
+  What that means in practice:
+  - No ingestion yet: the summary isn't rendered or requested, because there
+    can't be any reviews. This matches how ReviewList already behaved.
+  - After Start ingestion or a CSV import: the workspace increases attempt, so
+    the summary and the review list both refresh together and always agree.
+  - Placement: the summary goes with the review content, after the target
+    details and ingestion controls. That's the order docs/ui-ux-context.md asks
+    for.
+  - Failed last ingestion: the summary still shows. It reflects any reviews
+    saved by earlier successful runs, or the empty message if there are none.
+
+  4. Component tests: frontend/src/components/ReviewSummary.test.tsx (new)
+
+  The fixture: FIXTURE is the backend summary for saved ratings [5, 5, 4, 2, 1].
+  It's the same fixture as test_summary_counts_and_averages_known_fixture in
+  backend/tests/test_review_summary.py. The backend test proves those ratings
+  produce these numbers; the frontend test proves those numbers are shown
+  exactly. Together they cover the "known review fixture" requirement from end
+  to end.
+
+  A helper term(name) finds a field label (for example "Reviews ingested") and
+  returns the value displayed next to it, so the tests can check exact text.
+
+  Test: Exact count, average, distribution
+  What it checks: Count is 5, average is 3.4 out of 5, and the distribution rows
+
+    are exactly 5 stars: 2 reviews, 4 stars: 1 review, 3 stars: 0 reviews, 2
+    stars: 1 review, 1 star: 1 review, in that order. Also checks the request
+  URL
+     and auth header.
+  ────────────────────────────────────────
+  Test: Two-decimal average
+  What it checks: A response with an average of 3.75 shows 3.75 out of 5
+  (matches
+    the backend's fractional-rating test).
+  ────────────────────────────────────────
+  Test: Empty state
+  What it checks: review_count: 0 shows the "No reviews yet…" message and no
+    average.
+  ────────────────────────────────────────
+  Test: Refresh
+  What it checks: Changing refreshKey fetches again and the count goes from 5 to
+
+    6.
+  ────────────────────────────────────────
+  Test: Denied target (404)
+  What it checks: Shows the "don't have access" message, never shows the
+  server's
+    text ("internal detail"), and shows no summary data.
+  ────────────────────────────────────────
+  Test: Malformed response and retry
+  What it checks: {review_count: '5'} (a string) is rejected with an error, and
+    clicking Try again loads the real summary.
+  ────────────────────────────────────────
+  Test: Network failure
+  What it checks: A failed fetch shows "Unable to connect".
+
+  5. Workspace tests: frontend/src/pages/TargetWorkspace.test.tsx
+
+  I added two tests:
+  - "shows the review summary and reviews once an ingestion has run":
+    - The mocked fetch answers based on the URL: /summary returns the fixture
+      summary, /reviews returns an empty list, and anything else returns the
+      target with a succeeded ingestion.
+    - It checks that the "Review summary" heading and 3.4 appear, and that
+      /api/targets/t1/summary was called with the token.
+    - This proves the summary is actually connected to the page.
+  - "does not request a summary before any ingestion":
+    - With latest_ingestion: null, there is no summary heading and only one
+      request is made (the target itself).
+    - This proves no unnecessary call goes to the summary endpoint.
+
+  The existing workspace tests are unchanged and still pass.
+
+  6. README.md
+
+  - I added step 5 to the user walkthrough: once reviews are saved, the
+    workspace shows the count, the average rating and the number of reviews at
+    each star level.
+  - I reworded the endpoint paragraph so it's clear the workspace summary comes
+    from GET /api/targets/<id>/summary, which is calculated from the saved
+    reviews.
+  - I removed the sentence "The workspace doesn't display the summary yet
+    (S2-006)", since that's no longer true.
+
+  Verification
+
+  - Vitest: 7 test files, 60 tests, all passing.
+  - tsc -b type-check: clean.
+  - ESLint: clean.
+  - Prettier: clean, after it reformatted targets.ts and the new test file
+    (formatting only).
+
+  Your existing frontend/.gitignore change is unchanged, and nothing has been
+  committed.
+
+> <ide_opened_file>The user opened the file
+  c:\Users\bdorf\VsCode\NJITSenSem1\CS490\CS490-Project-Team-Merge-Conflict\fro
+  ntend\src\components\ReviewSummary.tsx in the IDE. This may or may not be
+  related to the current task.</ide_opened_file>
+
+> Run Frontend/Backend tests, then commit and push
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The frontend passes. The backend needs its virtualenv:
+  Ran 1 shell command (ctrl+o to expand)
+
+● All green. Committing only the S2-006 files (leaving your unrelated
+  frontend/.gitignore change unstaged) and pushing:
+
+  Pushed to feature/S2-006-review-summary-display (ctrl+o to expand)
+
+● Both test suites pass, and the S2-006 work is committed and pushed.
+
+  - Frontend: all 60 tests pass. Type-check, lint and formatting are clean.
+  - Backend: all 240 tests pass, and the linter (ruff) reports no problems.
+  - Commit: 2f1d7c6 on feature/S2-006-review-summary-display. It contains only
+    the six S2-006 files.
+  - Push: the branch is on GitHub. Your separate frontend/.gitignore change is
+    still uncommitted in your working copy.
+
+  I haven't opened a pull request. You can open one from the branch at
+  https://github.com/bdorf04NJIT/CS490-Project-Team-Merge-Conflict, or I can
+  create it. The earlier stories also added an AI transcript under
+  ai-transcripts/, and there isn't one for S2-006 yet.
