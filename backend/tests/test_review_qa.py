@@ -477,9 +477,7 @@ def test_system_instructions_sent_to_model_match_the_built_prompt(engine):
     seed(engine, "a", [5])
     gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": []}')
 
-    answer_question(
-        engine, gemini, owner_id="user-a", target_id="a", payload={"question": "q"}
-    )
+    answer_question(engine, gemini, owner_id="user-a", target_id="a", payload={"question": "q"})
 
     sent_system_prompt = gemini.calls[0]["system_prompt"]
     expected = build_system_prompt(target_name="A", platform="google_maps")
@@ -493,9 +491,7 @@ def test_system_instructions_carry_this_targets_name_and_platform(engine):
     seed(engine, "cafe", [5])
     gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": []}')
 
-    answer_question(
-        engine, gemini, owner_id="user-a", target_id="cafe", payload={"question": "q"}
-    )
+    answer_question(engine, gemini, owner_id="user-a", target_id="cafe", payload={"question": "q"})
 
     sent_system_prompt = gemini.calls[0]["system_prompt"]
     assert 'Business: "CAFE"' in sent_system_prompt
@@ -553,8 +549,7 @@ def test_controlled_insufficient_evidence_reply_is_passed_through(engine):
     make_target(engine)
     seed(engine, "a", [5])
     gemini = FakeGemini(
-        '{"status": "insufficient_evidence", "answer": "The reviews do not say.",'
-        ' "review_ids": []}'
+        '{"status": "insufficient_evidence", "answer": "The reviews do not say.", "review_ids": []}'
     )
 
     result = answer_question(
@@ -592,8 +587,6 @@ def test_model_boundary_is_called_exactly_once_per_question(engine):
     seed(engine, "a", [5, 4])
     gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": ["0"]}')
 
-    answer_question(
-        engine, gemini, owner_id="user-a", target_id="a", payload={"question": "q"}
-    )
+    answer_question(engine, gemini, owner_id="user-a", target_id="a", payload={"question": "q"})
 
     assert len(gemini.calls) == 1
