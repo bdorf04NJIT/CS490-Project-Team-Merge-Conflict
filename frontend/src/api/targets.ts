@@ -222,3 +222,65 @@ export async function getReviewSummary(
   if (!isReviewSummary(body)) throw new TargetError(response.status, SUMMARY_FALLBACK)
   return body
 }
+
+// --- Review Q&A (S2-009) ---------------------------------------------------
+// The user asks a natural-language question about the active target's reviews and
+// ReviewLens (the LLM) answers from those reviews only. The answer contract mirrors
+// the system prompt in backend/app/services/qa_prompt.py: the model replies with a
+// status, an answer, and the ids of the reviews it used as evidence.
+//
+// NOTE: the backend endpoint that runs the model is owned by other stories
+// (S2-010 review context, S2-011 answer-from-evidence) and is not built yet. This
+// client isolates the single call so wiring it to the real route is a one-line change.
+
+export const QA_STATUSES = ['answered', 'insufficient_evidence', 'out_of_scope'] as const
+export type QaStatus = (typeof QA_STATUSES)[number]
+
+export type QaAnswer = {
+  status: QaStatus
+  answer: string
+  review_ids: string[]
+}
+
+const QA_MESSAGES: Record<number, string> = {
+  400: 'Enter a question, then ask again.',
+  401: 'Your session has expired. Please sign in again.',
+  404: "This analysis target doesn't exist or you don't have access to it.",
+  422: 'There are no reviews to answer from yet. Ingest reviews first.',
+  503: "The review assistant isn't available right now. Please try again later.",
+}
+const QA_FALLBACK = 'Unable to answer that right now. Please try again.'
+
+function isQaAnswer(body: unknown): body is QaAnswer {
+  const answer = body as Partial<QaAnswer> | null
+  return (
+    typeof answer?.answer === 'string' &&
+    typeof answer.status === 'string' &&
+    (QA_STATUSES as readonly string[]).includes(answer.status) &&
+    Array.isArray(answer.review_ids) &&
+    answer.review_ids.every((id) => typeof id === 'string')
+  )
+}
+
+export async function askQuestion(
+  accessToken: string,
+  targetId: string,
+  question: string,
+): Promise<QaAnswer> {
+  let response: Response
+  try {
+    response = await fetch(`/api/targets/${encodeURIComponent(targetId)}/questions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    })
+  } catch {
+    throw new TargetError(0, 'Unable to connect. Check your connection and try again.')
+  }
+  if (!response.ok) {
+    throw new TargetError(response.status, QA_MESSAGES[response.status] ?? QA_FALLBACK)
+  }
+  const body: unknown = await response.json()
+  if (!isQaAnswer(body)) throw new TargetError(response.status, QA_FALLBACK)
+  return body
+}

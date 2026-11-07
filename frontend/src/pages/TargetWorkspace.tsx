@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import ReviewCsvImport from '../components/ReviewCsvImport'
 import ReviewList from '../components/ReviewList'
+import ReviewQa from '../components/ReviewQa'
 import ReviewSummary from '../components/ReviewSummary'
 import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
 import type { TargetWorkspace as Workspace } from '../api/targets'
@@ -194,6 +195,7 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
       {ingestion && (
         <>
           <ReviewSummary accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
+          <ReviewQa accessToken={accessToken} targetId={targetId} />
           <ReviewList accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
         </>
       )}
