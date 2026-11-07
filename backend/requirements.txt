@@ -7,3 +7,4 @@ diff-cover
 SQLAlchemy>=2.0,<3
 psycopg[binary]>=3.2,<4
 ruff>=0.17,<0.18
+google-genai>=1.0,<2

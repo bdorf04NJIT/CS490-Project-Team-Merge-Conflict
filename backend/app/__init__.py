@@ -5,6 +5,7 @@ import jwt
 from dotenv import load_dotenv
 from flask import Flask
 
+from .adapters.gemini_source import GeminiReviewAnswerer, UnconfiguredGemini
 from .adapters.review_source import UnconfiguredReviewSource
 from .adapters.serpapi_source import SerpApiGoogleMapsSource
 from .database import init_database
@@ -53,6 +54,18 @@ def create_app(config=None):
         )
         if keys
         else UnconfiguredReviewSource(),
+    )
+    # Review Q&A model boundary. Without a key the app still boots; asking a question
+    # then reports that Gemini is not configured.
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    gemini_model = os.environ.get("GEMINI_MODEL", "").strip()
+    app.extensions.setdefault(
+        "gemini",
+        GeminiReviewAnswerer(gemini_key, model=gemini_model)
+        if gemini_key and gemini_model
+        else GeminiReviewAnswerer(gemini_key)
+        if gemini_key
+        else UnconfiguredGemini(),
     )
     app.register_blueprint(bp)
     return app

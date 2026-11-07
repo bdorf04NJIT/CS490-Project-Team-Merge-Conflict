@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import ReviewCsvImport from '../components/ReviewCsvImport'
 import ReviewList from '../components/ReviewList'
+import ReviewQa from '../components/ReviewQa'
 import ReviewSummary from '../components/ReviewSummary'
 import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
 import type { TargetWorkspace as Workspace } from '../api/targets'
@@ -118,85 +119,108 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
       <h3 id="workspace-heading" className="mt-1 text-lg font-semibold break-words text-slate-900">
         {target.name}
       </h3>
-      <dl className="mt-4 space-y-3 rounded-lg border border-slate-200 p-4 text-sm">
-        <div>
-          <dt className="font-medium text-slate-700">Review platform</dt>
-          <dd className="mt-0.5 text-slate-600">
-            {target.platform === PLATFORM.id ? PLATFORM.label : target.platform}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-medium text-slate-700">Source</dt>
-          <dd className="mt-0.5 break-all text-slate-600">
-            {/^https?:\/\//i.test(target.source_url) ? (
-              <a
-                className="text-indigo-600 hover:underline"
-                href={target.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {target.source_url}
-              </a>
-            ) : (
-              target.source_url
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-medium text-slate-700">Ingestion status</dt>
-          <dd className="mt-0.5 text-slate-600">
-            {ingestion
-              ? (STATUS_LABELS[ingestion.status] ?? ingestion.status)
-              : 'No reviews have been ingested yet.'}
-          </dd>
-        </div>
-      </dl>
 
-      <section aria-labelledby="ingest-heading" className="mt-6">
-        <h4 id="ingest-heading" className="font-semibold text-slate-900">
-          Ingest reviews
-        </h4>
-        <p id="ingest-help" className="mt-1 text-sm text-slate-500">
-          Import reviews from this target&apos;s saved {PLATFORM.label} source.
-        </p>
-        <button
-          type="button"
-          className="mt-3 w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-indigo-700 disabled:opacity-60"
-          aria-describedby="ingest-help"
-          disabled={submitting}
-          onClick={handleStartIngestion}
-        >
-          {submitting ? 'Starting ingestion...' : 'Start ingestion'}
-        </button>
-        {ingestRequest?.state === 'accepted' && (
-          <p
-            role="status"
-            className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
-          >
-            {ingestRequest.message}
-          </p>
-        )}
-        {ingestRequest?.state === 'error' && (
-          <p
-            role="alert"
-            className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800"
-          >
-            {ingestRequest.message}
-          </p>
-        )}
-      </section>
-      <ReviewCsvImport
-        accessToken={accessToken}
-        targetId={targetId}
-        onImported={() => setAttempt((n) => n + 1)}
-      />
-      {/* Reviews only exist once an ingestion has run. */}
-      {ingestion && (
-        <>
-          <ReviewSummary accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
-          <ReviewList accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
-        </>
-      )}
+      <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:gap-10">
+        {/* Left column: target details and getting reviews into the workspace. */}
+        <div>
+          <dl className="space-y-3 rounded-lg border border-slate-200 p-4 text-sm">
+            <div>
+              <dt className="font-medium text-slate-700">Review platform</dt>
+              <dd className="mt-0.5 text-slate-600">
+                {target.platform === PLATFORM.id ? PLATFORM.label : target.platform}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-slate-700">Source</dt>
+              <dd className="mt-0.5 break-all text-slate-600">
+                {/^https?:\/\//i.test(target.source_url) ? (
+                  <a
+                    className="text-indigo-600 hover:underline"
+                    href={target.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {target.source_url}
+                  </a>
+                ) : (
+                  target.source_url
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-slate-700">Ingestion status</dt>
+              <dd className="mt-0.5 text-slate-600">
+                {ingestion
+                  ? (STATUS_LABELS[ingestion.status] ?? ingestion.status)
+                  : 'No reviews have been ingested yet.'}
+              </dd>
+            </div>
+          </dl>
+
+          <section aria-labelledby="ingest-heading" className="mt-6">
+            <h4 id="ingest-heading" className="font-semibold text-slate-900">
+              Ingest reviews
+            </h4>
+            <p id="ingest-help" className="mt-1 text-sm text-slate-500">
+              Import reviews from this target&apos;s saved {PLATFORM.label} source.
+            </p>
+            <button
+              type="button"
+              className="mt-3 w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-indigo-700 disabled:opacity-60"
+              aria-describedby="ingest-help"
+              disabled={submitting}
+              onClick={handleStartIngestion}
+            >
+              {submitting ? 'Starting ingestion...' : 'Start ingestion'}
+            </button>
+            {ingestRequest?.state === 'accepted' && (
+              <p
+                role="status"
+                className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+              >
+                {ingestRequest.message}
+              </p>
+            )}
+            {ingestRequest?.state === 'error' && (
+              <p
+                role="alert"
+                className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800"
+              >
+                {ingestRequest.message}
+              </p>
+            )}
+          </section>
+          <ReviewCsvImport
+            accessToken={accessToken}
+            targetId={targetId}
+            onImported={() => setAttempt((n) => n + 1)}
+          />
+          {/* The review summary belongs with the data, so it sits under ingestion. */}
+          {ingestion && (
+            <ReviewSummary accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
+          )}
+        </div>
+
+        {/* Right column: asking questions and browsing the review evidence. */}
+        <div>
+          {ingestion ? (
+            <>
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-5 shadow-xs">
+                <ReviewQa accessToken={accessToken} targetId={targetId} />
+              </div>
+              <ReviewList accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
+            </>
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+              <h4 className="font-semibold text-slate-700">Ask about these reviews</h4>
+              <p className="mt-1">
+                Ingest reviews or import a CSV to start asking ReviewLens questions about this
+                target.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   )
 }
