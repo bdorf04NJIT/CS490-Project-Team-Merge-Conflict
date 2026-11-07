@@ -2,6 +2,7 @@ from flask import Blueprint, current_app, g, jsonify, request
 
 from .auth import require_auth
 from .services.ingestion import import_supplied_reviews, start_ingestion
+from .services.review_qa import answer_question
 from .services.review_storage import list_reviews
 from .services.review_summary import summarize_reviews
 from .services.targets import create_target, get_target, list_targets, update_target
@@ -117,3 +118,17 @@ def get_target_summary(target_id):
         current_app.extensions["database"], owner_id=g.user_id, target_id=target_id
     )
     return jsonify(summary)
+
+
+@bp.post("/targets/<target_id>/questions")
+@require_auth
+def post_target_question(target_id):
+    # Ownership and the review context are enforced inside answer_question.
+    result = answer_question(
+        current_app.extensions["database"],
+        current_app.extensions["gemini"],
+        owner_id=g.user_id,
+        target_id=target_id,
+        payload=request.get_json(silent=True),
+    )
+    return jsonify(result)

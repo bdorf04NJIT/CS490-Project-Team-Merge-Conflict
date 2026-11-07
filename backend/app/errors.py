@@ -44,6 +44,12 @@ class IngestionFailed(AppError):
     message = "No usable review data could be imported."
 
 
+class QaUnavailable(AppError):
+    status = 503
+    code = "QA_UNAVAILABLE"
+    message = "The review assistant isn't available right now. Please try again in a moment."
+
+
 def _body(code, message, fields=None):
     error = {"code": code, "message": message}
     if fields:
