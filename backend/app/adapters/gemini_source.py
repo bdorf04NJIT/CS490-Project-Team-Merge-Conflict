@@ -89,7 +89,5 @@ class GeminiReviewAnswerer:
 
     def _generate(self, client, model, user_content, config):
         """Single model call. Isolated so the fallback logic can be tested without the SDK."""
-        response = client.models.generate_content(
-            model=model, contents=user_content, config=config
-        )
+        response = client.models.generate_content(model=model, contents=user_content, config=config)
         return response.text

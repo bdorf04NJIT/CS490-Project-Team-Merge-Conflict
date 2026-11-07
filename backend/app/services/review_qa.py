@@ -23,7 +23,9 @@ from .targets import find_owned_target
 def _question(payload):
     text = payload.get("question") if isinstance(payload, dict) else None
     if not isinstance(text, str) or not text.strip():
-        raise ValidationError("Ask a question about these reviews.", fields={"question": "required"})
+        raise ValidationError(
+            "Ask a question about these reviews.", fields={"question": "required"}
+        )
     return text.strip()
 
 
@@ -31,7 +33,9 @@ def _reviews_block(reviews):
     lines = ["<reviews>"]
     for review in reviews:
         text = escape((review.text or "").strip())
-        lines.append(f'  <review id="{escape(str(review.id), quote=True)}" rating="{review.rating}">{text}</review>')
+        lines.append(
+            f'  <review id="{escape(str(review.id), quote=True)}" rating="{review.rating}">{text}</review>'
+        )
     lines.append("</reviews>")
     return "\n".join(lines)
 
