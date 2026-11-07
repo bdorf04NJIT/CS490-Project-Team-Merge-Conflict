@@ -73,6 +73,38 @@ def seed(engine, target_id, ratings, *, owner_id="user-a"):
     )
 
 
+def seed_reviews(engine, target_id, specs, *, owner_id="user-a"):
+    """Insert reviews with explicit id/created_at/text so order and size are controllable.
+
+    ``specs`` is a list of dicts with keys: id, text, rating, created_at (datetime).
+    Bypasses persist_reviews so the test can set created_at (persist_reviews stamps now).
+    """
+    from datetime import UTC, datetime
+
+    from app.models import IngestionRun, Review
+
+    with Session(engine) as session, session.begin():
+        run = IngestionRun(
+            target_id=target_id,
+            source_kind="google_maps_csv",
+            status="succeeded",
+            total_count=len(specs),
+        )
+        session.add(run)
+        session.flush()
+        for spec in specs:
+            session.add(
+                Review(
+                    id=spec["id"],
+                    target_id=target_id,
+                    ingestion_run_id=run.id,
+                    text=spec.get("text", "x"),
+                    rating=spec.get("rating", 5),
+                    created_at=spec.get("created_at", datetime.now(UTC)),
+                )
+            )
+
+
 # --- _question validation ------------------------------------------------------------------
 
 
@@ -289,3 +321,141 @@ def test_blank_question_rejected_over_api(qa_client, auth_header):
         "/api/targets/a/questions", json={"question": "   "}, headers=auth_header("user-a")
     )
     assert response.status_code == 400
+
+
+# --- S2-010: bounded, deterministic, scoped review context ---------------------------------
+
+
+def _review_ids_in(user_content):
+    import re
+
+    return re.findall(r'<review id="([^"]+)"', user_content)
+
+
+def test_context_is_capped_to_max_reviews_newest_first(engine):
+    from datetime import UTC, datetime
+
+    make_target(engine)
+    # Five reviews with increasing created_at; r5 is newest, r1 oldest.
+    seed_reviews(
+        engine,
+        "a",
+        [
+            {
+                "id": f"r{i}",
+                "text": f"text {i}",
+                "rating": 5,
+                "created_at": datetime(2026, 1, i, tzinfo=UTC),
+            }
+            for i in range(1, 6)
+        ],
+    )
+    gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": []}')
+
+    answer_question(
+        engine,
+        gemini,
+        owner_id="user-a",
+        target_id="a",
+        payload={"question": "q"},
+        max_reviews=3,
+        max_context_chars=10_000,
+    )
+
+    ids = _review_ids_in(gemini.calls[0]["user_content"])
+    # Only the 3 newest, newest-first, and never more than the cap.
+    assert ids == ["r5", "r4", "r3"]
+
+
+def test_context_is_bounded_by_character_budget(engine):
+    from datetime import UTC, datetime
+
+    make_target(engine)
+    # Each review text is 100 chars; a 250-char budget fits the first plus one more.
+    seed_reviews(
+        engine,
+        "a",
+        [
+            {
+                "id": f"r{i}",
+                "text": "x" * 100,
+                "rating": 5,
+                "created_at": datetime(2026, 1, i, tzinfo=UTC),
+            }
+            for i in range(1, 6)
+        ],
+    )
+    gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": []}')
+
+    answer_question(
+        engine,
+        gemini,
+        owner_id="user-a",
+        target_id="a",
+        payload={"question": "q"},
+        max_reviews=100,
+        max_context_chars=250,
+    )
+
+    ids = _review_ids_in(gemini.calls[0]["user_content"])
+    # Newest first: r5 (100) then r4 (200) fit; r3 would reach 300 > 250, so stop.
+    assert ids == ["r5", "r4"]
+
+
+def test_character_budget_always_includes_at_least_one_review(engine):
+    make_target(engine)
+    seed_reviews(engine, "a", [{"id": "r1", "text": "y" * 500, "rating": 4}])
+    block = _reviews_block_from(engine)
+    # A single oversized review is still included so the block is never empty.
+    assert 'id="r1"' in block
+
+
+def _reviews_block_from(engine):
+    from app.services.review_qa import _reviews_block
+    from app.services.review_summary import qa_context_reviews
+
+    with Session(engine) as session:
+        reviews = session.scalars(
+            qa_context_reviews(owner_id="user-a", target_id="a", limit=100)
+        ).all()
+    return _reviews_block(reviews, max_chars=10)
+
+
+def test_cap_never_leaks_another_users_reviews(engine):
+    # user-a owns target "a"; user-b owns target "b" with its own reviews.
+    make_target(engine, owner_id="user-a", target_id="a")
+    make_target(engine, owner_id="user-b", target_id="b")
+    seed(engine, "a", [5, 5], owner_id="user-a")
+    seed(engine, "b", [1, 1, 1], owner_id="user-b")
+    gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": []}')
+
+    answer_question(
+        engine,
+        gemini,
+        owner_id="user-a",
+        target_id="a",
+        payload={"question": "q"},
+        max_reviews=100,
+    )
+
+    # Only target a's two reviews appear; none of target b's reviews leak in.
+    user_content = gemini.calls[0]["user_content"]
+    assert user_content.count("<review ") == 2
+
+
+def test_qa_context_reviews_is_owner_and_target_scoped(engine):
+    from app.services.review_summary import qa_context_reviews
+
+    make_target(engine, owner_id="user-a", target_id="a")
+    seed(engine, "a", [5, 4, 3], owner_id="user-a")
+
+    with Session(engine) as session:
+        # Foreign owner sees nothing even though the target id is valid.
+        foreign = session.scalars(
+            qa_context_reviews(owner_id="user-b", target_id="a", limit=100)
+        ).all()
+        owned = session.scalars(
+            qa_context_reviews(owner_id="user-a", target_id="a", limit=100)
+        ).all()
+    assert foreign == []
+    assert len(owned) == 3

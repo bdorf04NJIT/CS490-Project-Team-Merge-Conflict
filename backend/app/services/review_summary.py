@@ -31,6 +31,24 @@ def active_reviews(*, owner_id, target_id):
     )
 
 
+def qa_context_reviews(*, owner_id, target_id, limit):
+    """Owner+target-scoped reviews for building Q&A context, newest first and capped.
+
+    This is ``active_reviews`` with a deterministic order and a row cap. Q&A sends the
+    reviews to an external model, so the dataset must be bounded: an uncapped context
+    can exceed the model's input limit (surfacing as a non-retryable error) and makes
+    each call slower and more expensive. The order is ``created_at`` descending with
+    ``id`` as a tie-breaker so the selection is stable and reproducible for a given
+    dataset. Ownership stays in the query itself (via ``active_reviews``), so the cap
+    never widens access: a foreign target still yields no rows.
+    """
+    return (
+        active_reviews(owner_id=owner_id, target_id=target_id)
+        .order_by(Review.created_at.desc(), Review.id.desc())
+        .limit(limit)
+    )
+
+
 def summarize_reviews(engine, *, owner_id, target_id):
     """Return review count, average rating, and star distribution for an owned target."""
     with Session(engine) as session:
