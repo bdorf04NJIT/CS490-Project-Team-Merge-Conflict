@@ -15,6 +15,7 @@ from app import create_app
 from app.adapters.gemini_source import GeminiReviewAnswerer, UnconfiguredGemini
 from app.errors import NotFound, QaUnavailable, ValidationError
 from app.models import Base
+from app.services.qa_prompt import build_system_prompt
 from app.services.review_qa import _question, _reviews_block, answer_question
 from app.services.review_storage import persist_reviews
 
@@ -459,3 +460,133 @@ def test_qa_context_reviews_is_owner_and_target_scoped(engine):
         ).all()
     assert foreign == []
     assert len(owned) == 3
+
+
+# --- S2-003: deterministic Q&A test harness (the model boundary) ---------------------------
+#
+# These tests prove the harness can verify exactly what crosses the model boundary without
+# any live-model call. The FakeGemini stub records the single ``answer(system_prompt,
+# user_content)`` call, so each assertion below inspects what the application *sends* to the
+# model and how it behaves on a *controlled* reply.
+
+
+def test_system_instructions_sent_to_model_match_the_built_prompt(engine):
+    # The exact system instruction the model receives must be the ReviewLens prompt built
+    # for this target, not a hardcoded or stale string.
+    make_target(engine, owner_id="user-a", target_id="a")
+    seed(engine, "a", [5])
+    gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": []}')
+
+    answer_question(engine, gemini, owner_id="user-a", target_id="a", payload={"question": "q"})
+
+    sent_system_prompt = gemini.calls[0]["system_prompt"]
+    expected = build_system_prompt(target_name="A", platform="google_maps")
+    assert sent_system_prompt == expected
+
+
+def test_system_instructions_carry_this_targets_name_and_platform(engine):
+    # Two targets owned by the same user must each get system instructions naming only
+    # themselves, so the model is never told about the wrong business.
+    make_target(engine, owner_id="user-a", target_id="cafe")
+    seed(engine, "cafe", [5])
+    gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": []}')
+
+    answer_question(engine, gemini, owner_id="user-a", target_id="cafe", payload={"question": "q"})
+
+    sent_system_prompt = gemini.calls[0]["system_prompt"]
+    assert 'Business: "CAFE"' in sent_system_prompt
+    assert "Review platform: Google Maps" in sent_system_prompt
+
+
+def test_wrong_target_reviews_are_not_supplied_to_the_model(engine):
+    # Same owner, two targets. A question about target "a" must send only target "a"'s
+    # reviews to the model, never the other target's reviews.
+    make_target(engine, owner_id="user-a", target_id="a")
+    make_target(engine, owner_id="user-a", target_id="b")
+    seed(engine, "a", [5, 5], owner_id="user-a")
+    seed(engine, "b", [1, 1, 1], owner_id="user-a")
+    gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": []}')
+
+    answer_question(
+        engine,
+        gemini,
+        owner_id="user-a",
+        target_id="a",
+        payload={"question": "q"},
+        max_reviews=100,
+    )
+
+    # Only target a's two reviews reach the model; none of target b's three reviews do.
+    user_content = gemini.calls[0]["user_content"]
+    assert user_content.count("<review ") == 2
+
+
+def test_cross_user_reviews_are_not_supplied_to_the_model(engine):
+    # Two users each own a target. A question from user-a must send only user-a's reviews
+    # to the model, never user-b's, even though the fake model would accept anything.
+    make_target(engine, owner_id="user-a", target_id="shared")
+    make_target(engine, owner_id="user-b", target_id="other")
+    seed(engine, "shared", [5, 5], owner_id="user-a")
+    seed(engine, "other", [1, 1, 1], owner_id="user-b")
+    gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": []}')
+
+    answer_question(
+        engine,
+        gemini,
+        owner_id="user-a",
+        target_id="shared",
+        payload={"question": "q"},
+        max_reviews=100,
+    )
+
+    user_content = gemini.calls[0]["user_content"]
+    assert user_content.count("<review ") == 2
+
+
+def test_controlled_insufficient_evidence_reply_is_passed_through(engine):
+    # Application behavior must follow a controlled model response: an insufficient-evidence
+    # status is surfaced verbatim, not treated as an error.
+    make_target(engine)
+    seed(engine, "a", [5])
+    gemini = FakeGemini(
+        '{"status": "insufficient_evidence", "answer": "The reviews do not say.", "review_ids": []}'
+    )
+
+    result = answer_question(
+        engine, gemini, owner_id="user-a", target_id="a", payload={"question": "q"}
+    )
+
+    assert result == {
+        "status": "insufficient_evidence",
+        "answer": "The reviews do not say.",
+        "review_ids": [],
+    }
+
+
+def test_controlled_out_of_scope_reply_is_passed_through(engine):
+    # A controlled out-of-scope decline is surfaced as-is.
+    make_target(engine)
+    seed(engine, "a", [5])
+    gemini = FakeGemini(
+        '{"status": "out_of_scope", "answer": "I can only answer about these reviews.",'
+        ' "review_ids": []}'
+    )
+
+    result = answer_question(
+        engine, gemini, owner_id="user-a", target_id="a", payload={"question": "q"}
+    )
+
+    assert result["status"] == "out_of_scope"
+    assert result["review_ids"] == []
+
+
+def test_model_boundary_is_called_exactly_once_per_question(engine):
+    # The harness can prove the orchestrator makes a single model call per question, so
+    # CI never fans out into repeated (paid) requests.
+    make_target(engine)
+    seed(engine, "a", [5, 4])
+    gemini = FakeGemini('{"status": "answered", "answer": "ok", "review_ids": ["0"]}')
+
+    answer_question(engine, gemini, owner_id="user-a", target_id="a", payload={"question": "q"})
+
+    assert len(gemini.calls) == 1
