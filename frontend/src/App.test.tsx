@@ -11,7 +11,10 @@ const auth = vi.hoisted(() => ({
   signUp: vi.fn(),
 }))
 vi.mock('./lib/supabase', () => ({ supabase: { auth } }))
-const session = { access_token: 'provider-token', user: { email: 'user@example.com' } }
+const session = {
+  access_token: 'provider-token',
+  user: { id: 'user-1', email: 'user@example.com' },
+}
 let notify: (event: string, value: typeof session | null) => void
 
 beforeEach(() => {
@@ -69,6 +72,43 @@ test('restores an existing session and logs out without retaining identity', asy
   expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' })
   expect(await screen.findByLabelText('Password')).toBeTruthy()
   expect(screen.queryByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeNull()
+})
+
+test('a repeated SIGNED_IN for the same session does not reload the page', async () => {
+  auth.onAuthStateChange.mockImplementation((callback) => {
+    notify = callback
+    callback('INITIAL_SESSION', session)
+    return { data: { subscription: { unsubscribe: vi.fn() } } }
+  })
+  render(<App />)
+  await screen.findByText(/any analysis targets yet/)
+  const callsBefore = vi.mocked(fetch).mock.calls.length
+
+  // Supabase re-emits SIGNED_IN with an equal (but new) session object on tab refocus.
+  act(() => notify('SIGNED_IN', { ...session, user: { ...session.user } }))
+
+  expect(screen.queryByText('Verifying your session...')).toBeNull()
+  expect(screen.getByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeTruthy()
+  expect(vi.mocked(fetch).mock.calls.length).toBe(callsBefore)
+})
+
+test('switching to a different user verifies the new identity', async () => {
+  auth.onAuthStateChange.mockImplementation((callback) => {
+    notify = callback
+    callback('INITIAL_SESSION', session)
+    return { data: { subscription: { unsubscribe: vi.fn() } } }
+  })
+  render(<App />)
+  await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })
+
+  const other = { access_token: 'other-token', user: { id: 'user-2', email: 'other@example.com' } }
+  act(() => notify('SIGNED_IN', other))
+
+  expect(await screen.findByText('Signed in as other@example.com')).toBeTruthy()
+  expect(fetch).toHaveBeenCalledWith(
+    '/api/me',
+    expect.objectContaining({ headers: { Authorization: 'Bearer other-token' } }),
+  )
 })
 
 test('failed login stays signed out and displays an error', async () => {
