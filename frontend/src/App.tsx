@@ -104,8 +104,17 @@ function App() {
     }
   }
 
+  // The auth/loading screens read best as a narrow centered card. Once signed in,
+  // the workspace needs far more room, so the shell widens for the Home view.
+  const wide = Boolean(!loading && session && identity)
   return (
-    <main className="mx-4 my-10 max-w-[420px] rounded-2xl border border-slate-200/80 bg-white p-7 shadow-[0_12px_40px_-16px_rgba(15,23,42,0.18)] sm:mx-auto sm:my-24 sm:p-10">
+    <main
+      className={
+        wide
+          ? 'mx-4 my-10 max-w-5xl rounded-2xl border border-slate-200/80 bg-white p-7 shadow-[0_12px_40px_-16px_rgba(15,23,42,0.18)] sm:mx-auto sm:my-16 sm:p-10'
+          : 'mx-4 my-10 max-w-[420px] rounded-2xl border border-slate-200/80 bg-white p-7 shadow-[0_12px_40px_-16px_rgba(15,23,42,0.18)] sm:mx-auto sm:my-24 sm:p-10'
+      }
+    >
       <h1 className="mb-8 flex items-center justify-center gap-2.5 text-xl font-semibold tracking-tight text-slate-900">
         <span
           aria-hidden="true"
