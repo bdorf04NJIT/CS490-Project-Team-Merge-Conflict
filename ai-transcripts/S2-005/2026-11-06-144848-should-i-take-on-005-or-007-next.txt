@@ -1,0 +1,594 @@
+
+> Should I take on 005 or 007 next
+
+● I'll look up what S2-005 and S2-007 are.
+
+  Searched for 1 pattern, read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● Now let me check what the backend already persists about ingestion runs, since
+  both stories depend on that.
+
+  Searched for 3 patterns, read 2 files (ctrl+o to expand)
+
+● I'd do S2-005 next. It's smaller, and S2-007 builds on it.
+
+  Where S2-005 stands: most of it already exists.
+  - The backend saves each ingestion run's status (succeeded / partial / failed)
+    in the IngestionRun table, and the workspace endpoint returns it as
+    latest_ingestion. That covers the story's requirement that the status come
+    from saved ingestion state.
+  - The workspace already shows an "Ingestion status" row
+    (TargetWorkspace.tsx:146-151
+    (frontend/src/pages/TargetWorkspace.tsx#L146-L151)).
+  - What's missing: STATUS_LABELS (TargetWorkspace.tsx:12-16
+    (frontend/src/pages/TargetWorkspace.tsx#L12-L16)) has no entry for partial,
+    so a partial run shows the raw word "partial". The story says partial
+    success should be shown as its own state. The statuses could also use visual
+    distinction (color or icon) and tests for each state.
+  - This is mostly a frontend change and should be a quick win.
+
+  S2-007 is bigger and depends on S2-005:
+  - Skipped counts are already saved (IngestionRun.skipped_count), but the
+    reason a record was skipped is not. normalize_review()
+    (review_normalization.py:54-76
+    (backend/app/services/review_normalization.py#L54-L76)) just returns None,
+    whether the text was missing, the rating was invalid or the record was
+    malformed.
+  - Reporting reason categories ("missing review text", "invalid rating",
+    "malformed record") would need:
+    - normalization to return a reason for each skipped record
+    - a new column or table to save the counts, plus a migration
+    - API changes
+    - a UI to display them
+  - That UI would naturally sit next to the partial status from S2-005. Doing
+    S2-007 first means designing that area twice, or conflicting with whoever
+    does S2-005.
+
+  Reason categories are optional ("when useful"). If you skip them, S2-007
+  shrinks to showing the imported and skipped counts that are already saved.
+  Even so, it fits most cleanly as a follow-on to S2-005.
+
+  One more thing: S2-006 is still on its branch with no PR. You might open that
+  before starting S2-005, since they touch the same workspace file.
+
+> Outcome:
+  The AnalysisTarget workspace clearly communicates the result state of the
+  ingestion operation associated with the active dataset.
+
+  Technical Guidance:
+
+  The user must be able to distinguish at least:
+
+  Successful ingestion.
+  Failed ingestion.
+  If the team's Sprint 1 implementation supports partial success, the UI should
+  represent that state distinctly.
+
+  If ingestion is asynchronous, a processing state should also be represented.
+
+  The displayed result should come from persisted ingestion state rather than
+  being inferred solely from the presence of review rows.
+
+  Rules: S2-BR-001, S2-BR-005 through S2-BR-007
+
+● Starting S2-005. First I'll check the business rules and where S2-006 stands,
+  so I know which branch to start from.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● The business rules aren't in the repo, so I'm working from the story text.
+  S2-006 isn't merged yet and touches the same workspace file, so I'm branching
+  from it to avoid conflicts.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● The backend already returns the full saved run, so this story is
+  frontend-only, and since ingestion is synchronous and the database never
+  stores "processing", I'm checking the UI guidance before writing the
+  component.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● I have the UI color rules and will build an IngestionStatus component showing
+  the saved run's status, counts, and completion time, then drop the unreachable
+  "processing" label and reload saved state after failures. Checking how the
+  CSV import reports failures next.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Refreshing the workspace swaps the whole page for "Opening workspace...",
+  which unmounts the CSV import panel and wipes its messages, so I'll keep the
+  loaded workspace visible during refresh and then refresh after failures too.
+  Starting with the API type next.
+
+● Update(frontend\src\api\targets.ts)
+  ⎿  Added 10 lines, removed 1 line
+       91    return body.targets
+       92  }
+       93  
+       94 -export type IngestionState = { status: string }               
+       94 +// The most recent persisted IngestionRun for a target, as ret
+          +urned by the backend.                                         
+       95 +// Only `status` is guaranteed; the other fields are shown whe
+          +n present.                                                    
+       96 +export type IngestionState = {                                
+       97 +  status: string                                              
+       98 +  total_count?: number                                        
+       99 +  imported_count?: number                                     
+      100 +  skipped_count?: number                                      
+      101 +  message?: string | null                                     
+      102 +  completed_at?: string                                       
+      103 +}                                                             
+      104  
+      105  export type TargetWorkspace = AnalysisTarget & { latest_ingest
+           ion: IngestionState | null }
+      106  
+
+● Now the status component:
+
+● Write(frontend\src\components\IngestionStatus.tsx)
+  ⎿  Wrote 85 lines to frontend\src\components\IngestionStatus.tsx
+       1 import type { IngestionState } from '../api/targets'
+       2
+       3 type Props = { ingestion: IngestionState | null }
+       4
+       5 // Ingestion runs synchronously, so a persisted run is always fi
+         nished: it either
+       6 // succeeded, partially succeeded (some records skipped) or fail
+         ed.
+       7 const STATES: Record<string, { label: string; tone: string }> =
+         {
+     … +78 lines (ctrl+o to expand)
+
+● Now the workspace: use the component, keep the page visible while refreshing,
+  refresh after failed attempts, and show an amber notice when a just-finished
+  run was partial.
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend" && python - <<'EOF'
+      import re,io…)
+  ⎿  Updated frontend\src\pages\TargetWorkspace.tsx (+28 -18)
+      1  import { useEffect, useState } from 'react'
+      2 +import IngestionStatus from '../components/IngestionStatus'     
+      3  import ReviewCsvImport from '../components/ReviewCsvImport'
+      4  import ReviewList from '../components/ReviewList'
+      5  import ReviewSummary from '../components/ReviewSummary'
+     ...
+       7  import type { TargetWorkspace as Workspace } from '../api/targe
+          ts'
+       8  
+       9  type Props = { accessToken: string; targetId: string; onBack: (
+          ) => void }
+       9 -type Result = { key: string; target: Workspace | null; error: s
+         -tring }                                                        
+      10 -type Ingest = { targetId: string; state: 'submitting' | 'accept
+         -ed' | 'error'; message: string }                               
+      11 -                                                               
+      12 -const STATUS_LABELS: Record<string, string> = {                
+      13 -  processing: 'Ingestion in progress',                         
+      14 -  succeeded: 'Last ingestion succeeded',                       
+      15 -  failed: 'Last ingestion failed',                             
+      10 +type Result = { key: string; targetId: string; target: Workspac
+         +e | null; error: string }                                      
+      11 +type Ingest = {                                                
+      12 +  targetId: string                                             
+      13 +  state: 'submitting' | 'accepted' | 'partial' | 'error'       
+      14 +  message: string                                              
+      15  }
+      16  
+      17  export default function TargetWorkspace({ accessToken, targetId
+          , onBack }: Props) {
+     ...
+      24      let cancelled = false
+      25      getTarget(accessToken, targetId)
+      26        .then((target) => {
+      28 -        if (!cancelled) setResult({ key: requestKey, target, er
+         -ror: '' })                                                     
+      27 +        if (!cancelled) setResult({ key: requestKey, targetId, 
+         +target, error: '' })                                           
+      28        })
+      29        .catch((e: unknown) => {
+      30          if (cancelled) return
+      31          const error = e instanceof TargetError ? e.message : 'U
+          nable to open this target right now.'
+      32          // Keep no target data around after a failure, so a den
+          ied id shows nothing.
+      34 -        setResult({ key: requestKey, target: null, error })    
+      33 +        setResult({ key: requestKey, targetId, target: null, er
+         +ror })                                                         
+      34        })
+      35      return () => {
+      36        cancelled = true
+      37      }
+      38    }, [accessToken, targetId, requestKey])
+     … 65 more lines (ctrl+o to expand)
+
+● Now the CSV import: tell the workspace to refresh after any attempt the server
+  answered, and use amber for a partial import.
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend" && python - <<'EOF'
+      p='src/components/ReviewCsvImport.tsx'…)
+  ⎿  Updated frontend\src\components\ReviewCsvImport.tsx (+9 -4)
+       1  import { useState } from 'react'
+       2  import type { FormEvent } from 'react'
+       3  
+       4 -type Props = { accessToken: string; targetId: string; onImporte
+         -d: () => void }                                                
+       4 +// onFinished runs after any attempt the server answered, so th
+         +e workspace can reload the                                     
+       5 +// persisted ingestion status (failed imports are recorded as f
+         +ailed runs too).                                               
+       6 +type Props = { accessToken: string; targetId: string; onFinishe
+         +d: () => void }                                                
+       7  type ImportRun = {
+       8    status: string
+       9    imported_count: number
+      10    skipped_count: number
+      11  }
+      12  
+      11 -export default function ReviewCsvImport({ accessToken, targetId
+         -, onImported }: Props) {                                       
+      13 +export default function ReviewCsvImport({ accessToken, targetId
+         +, onFinished }: Props) {                                       
+      14    const [busy, setBusy] = useState(false)
+      15    const [error, setError] = useState('')
+      16    const [summary, setSummary] = useState('')
+      17 +  const [partial, setPartial] = useState(false)                
+      18  
+      19    async function submit(event: FormEvent<HTMLFormElement>) {
+      20      event.preventDefault()
+     ...
+      53                  ? 'The CSV did not contain usable reviews. Chec
+          k its columns, review text, and ratings.'
+      54                  : 'Unable to import reviews right now. Please t
+          ry again.',
+      55          )
+      56 +        if (response.status !== 401) onFinished()              
+      57          return
+      58        }
+      59        const data: { run: ImportRun } = await response.json()
+      60 +      setPartial(data.run.status === 'partial')                
+      61        setSummary(
+      62          `Imported ${data.run.imported_count} reviews (${data.ru
+          n.skipped_count} skipped). Status: ${data.run.status}.`,
+      63        )
+      64        form.reset()
+      60 -      onImported()                                             
+      65 +      onFinished()                                             
+      66      } catch {
+      67        setError('Unable to connect to the review import service.
+          ')
+      68      } finally {
+     ...
+      101          </button>
+     … 7 more lines (ctrl+o to expand)
+
+● Now tests. A component test for every status, then workspace tests for the
+  refresh behavior:
+
+● Write(frontend\src\components\IngestionStatus.test.tsx)
+  ⎿  Wrote 108 lines to frontend\src\components\IngestionStatus.test.tsx
+       1 // @vitest-environment jsdom
+       2 import { afterEach, describe, expect, it } from 'vitest'
+       3 import { cleanup, render, screen } from '@testing-library/react'
+       4 import IngestionStatus from './IngestionStatus'
+       5
+       6 const RUN = {
+       7   total_count: 5,
+       8   imported_count: 5,
+       9   skipped_count: 0,
+      10   message: 'Import succeeded.',
+     … +98 lines (ctrl+o to expand)
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend" && python - <<'EOF'
+      p='src/pages/TargetWorkspace.test.tsx'…)
+  ⎿  Updated frontend\src\pages\TargetWorkspace.test.tsx (+91 -1)
+      33      const source = screen.getByRole('link', { name: TARGET.sour
+          ce_url })
+      34      expect(source.getAttribute('href')).toBe(TARGET.source_url)
+      35      expect(source.getAttribute('rel')).toContain('noopener')
+      36 -    expect(screen.getByText('No reviews have been ingested yet.
+         -')).toBeTruthy()                                               
+      36 +    expect(screen.getByText(/No reviews have been ingested yet/
+         +)).toBeTruthy()                                                
+      37      expect(screen.getByRole('button', { name: 'Start ingestion'
+           })).toBeTruthy()
+      38      expect(fetchMock).toHaveBeenCalledWith('/api/targets/t1', {
+      39        headers: { Authorization: 'Bearer tok-123' },
+     ...
+       47      expect(await screen.findByText('Last ingestion failed')).t
+           oBeTruthy()
+       48    })
+       49  
+       50 +  it.each([                                                   
+       51 +    ['succeeded', 'Last ingestion succeeded', 'Added 4 new rev
+          +iews.'],                                                      
+       52 +    ['partial', 'Last ingestion partially succeeded', "4 of 5 
+          +records couldn't be used"],                                   
+       53 +    ['failed', 'Last ingestion failed', 'The source did not re
+          +spond.'],                                                     
+       54 +  ])('shows a persisted %s run from the workspace response', a
+          +sync (status, label, detail) => {                             
+       55 +    const run = {                                             
+       56 +      status,                                                 
+       57 +      total_count: status === 'failed' ? 0 : 5,               
+       58 +      imported_count: status === 'failed' ? 0 : 4,            
+       59 +      skipped_count: status === 'partial' ? 4 : 0,            
+       60 +      message: status === 'failed' ? 'The source did not respo
+          +nd.' : 'Import succeeded.',                                   
+       61 +      completed_at: '2026-11-06T15:04:00+00:00',              
+       62 +    }                                                         
+       63 +    const fetchMock = vi.fn((url: string) =>                  
+       64 +      Promise.resolve(                                        
+       65 +        url.endsWith('/summary')                              
+       66 +          ? reply(500)                                        
+       67 +          : url.endsWith('/reviews')                          
+       68 +            ? reply(200, { reviews: [] })                     
+       69 +            : reply(200, { ...TARGET, latest_ingestion: run })
+          +,                                                             
+       70 +      ),                                                      
+       71 +    )                                                         
+       72 +    vi.stubGlobal('fetch', fetchMock)                         
+       73 +    render(<TargetWorkspace accessToken="tok" targetId="t1" on
+          +Back={() => {}} />)                                           
+       74 +    expect(await screen.findByText(label)).toBeTruthy()       
+       75 +    expect(screen.getByText(new RegExp(detail.replace(/[.']/g,
+          + '.')))).toBeTruthy()                                         
+       76 +  })                                                          
+       77 +                                                              
+       78 +  it('reloads the persisted status after a refused ingestion a
+          +nd keeps the error visible', async () => {                    
+     … 70 more lines (ctrl+o to expand)
+  ⎿  (timeout 5m)
+
+● All 76 tests pass. Let me tidy one awkward assertion, then run type-check,
+  lint and Prettier.
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend" && python - <<'EOF'
+      p='src/pages/TargetWorkspace.test.tsx'…)
+  ⎿  Updated frontend\src\pages\TargetWorkspace.test.tsx (+1 -1)
+      72      vi.stubGlobal('fetch', fetchMock)
+      73      render(<TargetWorkspace accessToken="tok" targetId="t1" onB
+          ack={() => {}} />)
+      74      expect(await screen.findByText(label)).toBeTruthy()
+      75 -    expect(screen.getByText(new RegExp(detail.replace(/[.']/g, 
+         -'.')))).toBeTruthy()                                           
+      75 +    expect(document.body.textContent).toContain(detail)        
+      76    })
+      77  
+      78    it('reloads the persisted status after a refused ingestion an
+          d keeps the error visible', async () => {
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend" && npx prettier --write src/components/IngestionStatus.tsx
+      src/component…)
+  ⎿  Updated frontend\src\components\ReviewCsvImport.tsx (+4 -1)
+      101          </button>
+      102        </form>
+      103        {summary && (
+      104 -        <p role="status" className={`mt-3 text-sm ${partial ? 
+          -'text-amber-900' : 'text-green-800'}`}>                       
+      104 +        <p                                                    
+      105 +          role="status"                                       
+      106 +          className={`mt-3 text-sm ${partial ? 'text-amber-900
+          +' : 'text-green-800'}`}                                       
+      107 +        >                                                     
+      108            {summary}
+      109          </p>
+      110        )}
+  ⎿  (timeout 5m)
+
+● Everything passes. Let me check whether the README describes the workspace
+  status, and whether the coverage gate on main (added after S2-006 branched)
+  would accept this.
+  Ran 2 shell commands (ctrl+o to expand)
+
+● main now has a CI gate requiring 70% coverage on changed frontend lines, so
+  I'm adding a small test for the changed lines in ReviewCsvImport and updating
+  the README line about workspace status.
+
+● Write(frontend\src\components\ReviewCsvImport.test.tsx)
+  ⎿  Wrote 55 lines to frontend\src\components\ReviewCsvImport.test.tsx
+      1 // @vitest-environment jsdom
+      2 import { afterEach, describe, expect, it, vi } from 'vitest'
+      3 import { cleanup, render, screen } from '@testing-library/react'
+      4 import userEvent from '@testing-library/user-event'
+      5 import ReviewCsvImport from './ReviewCsvImport'
+      6
+      7 function reply(status: number, body: unknown = {}) {
+      8   return { ok: status >= 200 && status < 300, status, json: async
+         () => body } as Response
+      9 }
+     … +46 lines (ctrl+o to expand)
+
+● Update(README.md)
+  ⎿  Added 4 lines, removed 1 line
+      51     - **Start ingestion** pulls reviews from Google Maps. Needs 
+          `SERPAPI_API_KEY`.
+      52     - **Import CSV reviews** uploads your own export. Needs `rev
+          iew_text` and `rating`
+      53       columns.
+      54 -4. The workspace shows whether the last ingestion succeeded or 
+         -failed.                                                        
+      54 +4. The workspace shows the saved result of the last ingestion: 
+         +succeeded (green), partially                                   
+      55 +   succeeded with some records skipped (amber), or failed with 
+         +the reason (red). It includes                                  
+      56 +   how many new reviews were added and when the run finished, a
+         +nd it reloads after every                                      
+      57 +   attempt, including failed ones.                             
+      58  5. Once reviews are saved, the workspace shows a review summary
+          : how many reviews were
+      59     ingested, the average rating, and how many reviews have each
+           star rating.
+      60  
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend" && npx prettier --write
+      src/components/ReviewCsvImport.test.tsx ../READM…)
+  ⎿  Updated README.md (+14 -14)
+       9  
+      10  ## Repo layout
+      11  
+      12 -| Folder | What's in it |                                      
+      13 -|---|---|                                                      
+      14 -| `frontend/` | React + Vite + TypeScript + Tailwind app. See [
+         -frontend/README.md](frontend/README.md) |                      
+      15 -| `backend/` | Flask API with SQLAlchemy and Supabase Postgres.
+         - See [backend/README.md](backend/README.md) |                  
+      16 -| `docs/` | Team standards and the local setup guide |         
+      17 -| `ai-transcripts/` | AI development transcripts, one folder pe
+         -r story |                                                      
+      18 -| `.github/workflows/` | CI (`ci.yml`) and the sprint issue imp
+         -orter |                                                        
+      12 +| Folder               | What's in it                          
+         +                                                      |        
+      13 +| -------------------- | --------------------------------------
+         +----------------------------------------------------- |        
+      14 +| `frontend/`          | React + Vite + TypeScript + Tailwind a
+         +pp. See [frontend/README.md](frontend/README.md)      |        
+      15 +| `backend/`           | Flask API with SQLAlchemy and Supabase
+         + Postgres. See [backend/README.md](backend/README.md) |        
+      16 +| `docs/`              | Team standards and the local setup gui
+         +de                                                    |        
+      17 +| `ai-transcripts/`    | AI development transcripts, one folder
+         + per story                                            |        
+      18 +| `.github/workflows/` | CI (`ci.yml`) and the sprint issue imp
+         +orter                                                 |        
+      19  
+      20  Storage config lives in `backend/.env` (`DATABASE_URL`) and is 
+          read by
+      21  `backend/app/database.py`. The frontend calls the backend throu
+          gh the Vite proxy (`/api`
+     ...
+      71  
+      72  Run these before pushing. CI runs the same commands on every pu
+          ll request.
+      73  
+      74 -| Task | Frontend (in `frontend/`) | Backend (in `backend/`, ve
+         -nv active) |                                                   
+      75 -|---|---|---|                                                  
+      76 -| Lint | `npm run lint` | `ruff check .` |                     
+      77 -| Format (fix) | `npm run format` | `ruff format .` |          
+      78 -| Format (check only) | `npm run format:check` | `ruff format -
+         --check .` |                                                    
+      79 -| Unit tests | `npm test` | `pytest` |                         
+      80 -| Build | `npm run build` | `python -m compileall -q app` |    
+      74 +| Task                | Frontend (in `frontend/`) | Backend (in
+         + `backend/`, venv active) |                                    
+      75 +| ------------------- | ------------------------- | -----------
+         +------------------------- |                                    
+      76 +| Lint                | `npm run lint`            | `ruff check
+         + .`                       |                                    
+      77 +| Format (fix)        | `npm run format`          | `ruff forma
+         +t .`                      |                                    
+      78 +| Format (check only) | `npm run format:check`    | `ruff forma
+         +t --check .`              |                                    
+      79 +| Unit tests          | `npm test`                | `pytest`   
+         +                          |                                    
+      80 +| Build               | `npm run build`           | `python -m 
+         +compileall -q app`        |                                    
+      81  
+      82  Tests and builds need no env files or secrets. Backend tests us
+          e fake config and a temporary
+      83  SQLite database. Frontend tests mock the Supabase client.
+  ⎿  (timeout 5m)
+
+● S2-005 is done on a new branch, feature/S2-005-ingestion-status-display. It's
+  not committed yet. All 80 frontend tests pass, and type-check, lint and
+  Prettier are clean. I haven't opened it in a browser, and nothing changed on
+  the backend.
+
+  What the workspace now shows. The "Ingestion status" row reads the last saved
+  ingestion run instead of guessing from whether reviews exist:
+
+  ┌────────────┬────────────────────────────────────────────────────────────┐
+  │   Saved    │                          Display                           │
+  │   status   │                                                            │
+  ├────────────┼────────────────────────────────────────────────────────────┤
+  │ Succeeded  │ Green: "Last ingestion succeeded", plus "Added N new       │
+  │            │ reviews."                                                  │
+  ├────────────┼────────────────────────────────────────────────────────────┤
+  │            │ Amber: "Last ingestion partially succeeded", plus "Added N │
+  │ Partial    │  new reviews. S of T records couldn't be used and were     │
+  │            │ skipped."                                                  │
+  ├────────────┼────────────────────────────────────────────────────────────┤
+  │ Failed     │ Red: "Last ingestion failed", plus the saved reason and    │
+  │            │ "No reviews were added by this attempt."                   │
+  ├────────────┼────────────────────────────────────────────────────────────┤
+  │ None yet   │ "No reviews have been ingested yet. Start ingestion or     │
+  │            │ import a CSV."                                             │
+  └────────────┴────────────────────────────────────────────────────────────┘
+
+  Each status also shows when the run finished. The backend already returned all
+  of this; the frontend just wasn't reading it.
+
+  Other changes:
+  - Removed the "processing" label. Ingestion runs synchronously and the
+    database only allows succeeded/partial/failed, so it could never appear. The
+    button's "Starting ingestion..." text covers the in-progress state.
+  - Refresh after failed attempts. Before, if a run or CSV import failed, the
+    workspace could still say "Last ingestion succeeded", even though the server
+    had saved the failure. It now reloads after any attempt the server
+    answered. It skips the reload on an expired session or a network error.
+  - Workspace stays on screen while reloading. Before, any reload swapped the
+    page for "Opening workspace...", which wiped the import panel's success or
+    error message.
+  - Amber for partial results. The "just finished" messages from Start ingestion
+    and CSV import now turn amber for a partial run, matching ui-ux-context.md
+    (docs/ui-ux-context.md).
+
+  Files:
+  - New: IngestionStatus.tsx (frontend/src/components/IngestionStatus.tsx) and
+    its tests.
+  - New: ReviewCsvImport.test.tsx
+    (frontend/src/components/ReviewCsvImport.test.tsx). This component had no
+    tests, and the new CI coverage gate on main checks changed lines.
+  - Updated: TargetWorkspace.tsx (frontend/src/pages/TargetWorkspace.tsx),
+    ReviewCsvImport.tsx (frontend/src/components/ReviewCsvImport.tsx),
+    targets.ts (frontend/src/api/targets.ts) and the README.
+
+  Before you open a PR:
+  - It's stacked on S2-006. I branched from S2-006 because both stories edit
+    TargetWorkspace.tsx. A PR opened now would include S2-006's commits until
+    that branch is merged, so merge S2-006 first.
+  - No business rules doc. The repo only lists rule numbers (S2-BR-001,
+    005–007), so I worked from the story text. If you have the rules document,
+    it's worth a quick check against it.
+
+  Want me to commit and push?
+
+> All tests ran? If so, Push
+
+● The frontend suite ran (80 passing). I didn't change any backend code, but
+  I'll run the backend tests too before pushing.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● The commit went through, but the push is taking longer than usual. It may be a
+  pre-push hook, or Git waiting for credentials. I'll wait for it to finish.
+
+● Background command "Commit S2-005 changes and push the branch" completed (exit
+code 0)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Yes, every test passed, and the branch is pushed.
+
+  - Frontend: all 80 tests pass, and type-check, lint and Prettier are clean.
+  - Backend: all 240 tests pass and the linter (ruff) reports no problems.
+    Nothing changed there; I ran them to be sure.
+  - Commit: 06a3541 on feature/S2-005-ingestion-status-display, containing only
+    the 8 S2-005 files. The branch is on GitHub and your working tree is clean.
+
+  I haven't opened a pull request, because the GitHub CLI (gh) isn't installed
+  here. You can open one from the branch at
+  https://github.com/bdorf04NJIT/CS490-Project-Team-Merge-Conflict.
+
+  - Merge S2-006 first. This branch was built on top of it, so until S2-006 is
+    merged, the S2-005 PR will also show S2-006's commits.
+  - No AI transcript yet. Like the earlier stories, S2-005 will need one under
+    ai-transcripts/.

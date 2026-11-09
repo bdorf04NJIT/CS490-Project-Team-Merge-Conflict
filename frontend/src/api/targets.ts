@@ -91,7 +91,16 @@ export async function listTargets(accessToken: string): Promise<AnalysisTarget[]
   return body.targets
 }
 
-export type IngestionState = { status: string }
+// The most recent persisted IngestionRun for a target, as returned by the backend.
+// Only `status` is guaranteed; the other fields are shown when present.
+export type IngestionState = {
+  status: string
+  total_count?: number
+  imported_count?: number
+  skipped_count?: number
+  message?: string | null
+  completed_at?: string
+}
 
 export type TargetWorkspace = AnalysisTarget & { latest_ingestion: IngestionState | null }
 
