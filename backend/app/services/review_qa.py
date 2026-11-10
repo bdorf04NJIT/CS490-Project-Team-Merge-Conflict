@@ -82,7 +82,18 @@ MAX_REVIEWS = 200
 MAX_CONTEXT_CHARS = 120_000
 
 
+# S2-016: the request body may carry only the question. Which target to read comes from
+# the URL and whose reviews come from the verified token, so a client-supplied target_id,
+# owner_id, or review/context field is refused outright instead of silently ignored.
+ALLOWED_QUESTION_FIELDS = {"question"}
+
+
 def _question(payload):
+    if isinstance(payload, dict) and not set(payload) <= ALLOWED_QUESTION_FIELDS:
+        raise ValidationError(
+            "Send only a question. The target comes from the page and the reviews from your "
+            "own account."
+        )
     text = payload.get("question") if isinstance(payload, dict) else None
     if not isinstance(text, str) or not text.strip():
         raise ValidationError(
