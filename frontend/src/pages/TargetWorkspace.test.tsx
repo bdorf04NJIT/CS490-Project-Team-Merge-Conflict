@@ -49,7 +49,7 @@ describe('TargetWorkspace', () => {
 
   it.each([
     ['succeeded', 'Last ingestion succeeded', 'Added 4 new reviews.'],
-    ['partial', 'Last ingestion partially succeeded', "4 of 5 records couldn't be used"],
+    ['partial', 'Last ingestion partially succeeded', '4 of 5 records were skipped'],
     ['failed', 'Last ingestion failed', 'The source did not respond.'],
   ])('shows a persisted %s run from the workspace response', async (status, label, detail) => {
     const run = {
@@ -119,6 +119,7 @@ describe('TargetWorkspace', () => {
       run_status: 'partial',
       imported_count: 3,
       skipped_count: 2,
+      skip_reasons: { missing_text: 2 },
     }
     const fetchMock = vi.fn((url: string, init?: RequestInit) =>
       Promise.resolve(
@@ -132,7 +133,9 @@ describe('TargetWorkspace', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
     await userEvent.click(await screen.findByRole('button', { name: 'Start ingestion' }))
-    const notice = await screen.findByText('Imported 3 reviews (2 skipped).')
+    const notice = await screen.findByText(
+      'Imported 3 reviews. 2 records were skipped (2 missing review text) and not included in the review dataset.',
+    )
     expect(notice.className).toContain('bg-amber-50')
   })
 

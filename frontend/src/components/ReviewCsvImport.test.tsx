@@ -28,16 +28,23 @@ describe('ReviewCsvImport', () => {
     const run = { status: 'succeeded', imported_count: 2, skipped_count: 0 }
     const onFinished = await upload(201, { run })
     const notice = await screen.findByRole('status')
-    expect(notice.textContent).toContain('Imported 2 reviews (0 skipped)')
+    expect(notice.textContent).toBe('Imported 2 reviews.')
     expect(notice.className).toContain('text-green-800')
     expect(onFinished).toHaveBeenCalledOnce()
   })
 
   it('shows a partial import in amber', async () => {
-    const run = { status: 'partial', imported_count: 2, skipped_count: 1 }
+    const run = {
+      status: 'partial',
+      imported_count: 2,
+      skipped_count: 1,
+      skip_reasons: { invalid_rating: 1 },
+    }
     await upload(201, { run })
     const notice = await screen.findByRole('status')
-    expect(notice.textContent).toContain('(1 skipped)')
+    expect(notice.textContent).toBe(
+      'Imported 2 reviews. 1 record was skipped (1 missing or invalid rating) and not included in the review dataset.',
+    )
     expect(notice.className).toContain('text-amber-900')
   })
 

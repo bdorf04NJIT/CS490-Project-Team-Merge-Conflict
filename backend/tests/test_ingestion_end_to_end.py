@@ -39,8 +39,10 @@ def test_owner_imports_real_supplied_reviews_and_workspace_reports_state(client,
     assert response.status_code == 201
     run = response.get_json()["run"]
     assert (run["status"], run["imported_count"], run["skipped_count"]) == ("partial", 2, 1)
+    assert run["skip_reasons"] == {"missing_text": 1}
     workspace = client.get(f"/api/targets/{target_id}", headers=auth_header("user-a"))
     assert workspace.get_json()["latest_ingestion"]["status"] == "partial"
+    assert workspace.get_json()["latest_ingestion"]["skip_reasons"] == {"missing_text": 1}
     reviews = client.get(f"/api/targets/{target_id}/reviews", headers=auth_header("user-a"))
     assert reviews.status_code == 200
     assert sorted(x["text"] for x in reviews.get_json()["reviews"]) == ["Cold tea", "Good coffee"]
@@ -54,6 +56,40 @@ def test_failed_import_records_run_but_not_reviews(client, auth_header):
     assert workspace.get_json()["latest_ingestion"]["status"] == "failed"
     reviews = client.get(f"/api/targets/{target_id}/reviews", headers=auth_header("user-a"))
     assert reviews.get_json()["reviews"] == []
+
+
+def test_skipped_records_are_reported_and_never_enter_the_dataset(client, auth_header):
+    target_id = make_target(client, auth_header)
+    response = upload(
+        client,
+        auth_header("user-a"),
+        target_id,
+        b"review_text,rating\nGood coffee,5\n,4\nNo stars,\nToo many stars,9\n",
+    )
+    assert response.status_code == 201
+    run = response.get_json()["run"]
+    assert (run["total_count"], run["imported_count"], run["skipped_count"]) == (4, 1, 3)
+    assert run["skip_reasons"] == {"invalid_rating": 2, "missing_text": 1}
+    reviews = client.get(f"/api/targets/{target_id}/reviews", headers=auth_header("user-a"))
+    assert [x["text"] for x in reviews.get_json()["reviews"]] == ["Good coffee"]
+    summary = client.get(f"/api/targets/{target_id}/summary", headers=auth_header("user-a"))
+    assert summary.status_code == 200
+    # Skipped records must not count as analyzed data in the summary either.
+    assert (summary.get_json()["review_count"], summary.get_json()["average_rating"]) == (1, 5.0)
+
+
+def test_fully_rejected_import_still_reports_what_was_rejected(client, auth_header):
+    target_id = make_target(client, auth_header)
+    response = upload(
+        client, auth_header("user-a"), target_id, b"review_text,rating\n,5\nNo stars,0\n"
+    )
+    assert response.status_code == 422
+    latest = client.get(f"/api/targets/{target_id}", headers=auth_header("user-a")).get_json()[
+        "latest_ingestion"
+    ]
+    assert latest["status"] == "failed"
+    assert (latest["total_count"], latest["imported_count"], latest["skipped_count"]) == (2, 0, 2)
+    assert latest["skip_reasons"] == {"invalid_rating": 1, "missing_text": 1}
 
 
 def test_other_user_cannot_upload_or_retrieve_reviews(client, auth_header):

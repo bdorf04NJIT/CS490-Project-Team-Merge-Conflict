@@ -98,6 +98,8 @@ export type IngestionState = {
   total_count?: number
   imported_count?: number
   skipped_count?: number
+  // Per-category counts of skipped records, e.g. { missing_text: 2 }.
+  skip_reasons?: Record<string, number>
   message?: string | null
   completed_at?: string
 }
@@ -162,6 +164,7 @@ export type IngestionRequest = {
   run_status?: 'succeeded' | 'partial' | 'failed'
   imported_count?: number
   skipped_count?: number
+  skip_reasons?: Record<string, number>
 }
 
 const INGEST_MESSAGES: Record<number, string> = {

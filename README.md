@@ -54,7 +54,9 @@ every step, including Mac and Linux commands and common errors.
 4. The workspace shows the saved result of the last ingestion: succeeded (green), partially
    succeeded with some records skipped (amber), or failed with the reason (red). It includes
    how many new reviews were added and when the run finished, and it reloads after every
-   attempt, including failed ones.
+   attempt, including failed ones. When records are skipped, it shows how many and why (for
+   example "2 missing review text, 1 missing or invalid rating") and states that they are not
+   part of the review dataset.
 5. Once reviews are saved, the workspace shows a review summary: how many reviews were
    ingested, the average rating, and how many reviews have each star rating.
 
