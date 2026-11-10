@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { getReviewSummary, STAR_VALUES, TargetError } from '../api/targets'
 import type { ReviewSummary as Summary } from '../api/targets'
 
-type Props = { accessToken: string; targetId: string; refreshKey: number }
+type Props = { accessToken: string; targetId: string; refreshKey: number; targetName?: string }
 type Result = { key: string; summary: Summary | null; error: string }
 
 const averageFormat = new Intl.NumberFormat('en-US', {
@@ -16,7 +16,7 @@ function plural(count: number, word: string) {
 
 // Every value shown here comes from the backend summary, which is computed from the
 // persisted reviews. Nothing is recalculated from the (possibly truncated) review list.
-export default function ReviewSummary({ accessToken, targetId, refreshKey }: Props) {
+export default function ReviewSummary({ accessToken, targetId, refreshKey, targetName }: Props) {
   const [result, setResult] = useState<Result | null>(null)
   const [retry, setRetry] = useState(0)
   const requestKey = `${targetId}:${refreshKey}:${retry}`
@@ -39,9 +39,13 @@ export default function ReviewSummary({ accessToken, targetId, refreshKey }: Pro
   }, [accessToken, targetId, requestKey])
 
   const heading = (
-    <h4 id="summary-heading" className="font-semibold text-slate-900">
-      Review summary
-    </h4>
+    <>
+      <h4 id="summary-heading" className="font-semibold text-slate-900">
+        Review summary
+      </h4>
+      {/* S2-017: name the active target so the summary is never ambiguous. */}
+      {targetName && <p className="mt-0.5 text-xs break-words text-slate-500">For {targetName}</p>}
+    </>
   )
 
   if (result === null || result.key !== requestKey) {
