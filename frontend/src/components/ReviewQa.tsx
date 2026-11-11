@@ -5,6 +5,16 @@ import type { QaAnswer } from '../api/targets'
 
 type Props = { accessToken: string; targetId: string }
 
+// S2-011: say how many reviews support the answer out of how many were read, so
+// "2 reviews" isn't mistaken for "only 2 reviews were looked at".
+function evidenceLine({ review_ids, reviews_considered }: QaAnswer): string {
+  const cited = review_ids.length
+  if (reviews_considered === undefined || reviews_considered < cited) {
+    return `Based on ${cited} ${cited === 1 ? 'review' : 'reviews'}.`
+  }
+  return `${cited} of ${reviews_considered} ${reviews_considered === 1 ? 'review' : 'reviews'} ${cited === 1 ? 'mentions' : 'mention'} this.`
+}
+
 // S2-009: a minimal question-and-answer interaction for the active AnalysisTarget.
 // No persistent chat history is required; we keep only the latest answer. The active
 // target stays clear because this lives inside the target workspace, which already
@@ -86,10 +96,7 @@ export default function ReviewQa({ accessToken, targetId }: Props) {
             {answer.answer}
           </p>
           {answer.status === 'answered' && answer.review_ids.length > 0 && (
-            <p className="mt-3 text-xs text-slate-500">
-              Based on {answer.review_ids.length}{' '}
-              {answer.review_ids.length === 1 ? 'review' : 'reviews'}.
-            </p>
+            <p className="mt-3 text-xs text-slate-500">{evidenceLine(answer)}</p>
           )}
         </div>
       )}

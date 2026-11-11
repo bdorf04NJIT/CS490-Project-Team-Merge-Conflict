@@ -132,7 +132,7 @@ def test_reviews_block_renders_each_review_with_id_and_rating(engine):
         from app.services.review_summary import active_reviews
 
         reviews = session.scalars(active_reviews(owner_id="user-a", target_id="a")).all()
-    block = _reviews_block(reviews)
+    block, _ = _reviews_block(reviews)
     assert block.startswith("<reviews>")
     assert block.endswith("</reviews>")
     assert block.count("<review ") == 2
@@ -154,7 +154,7 @@ def test_reviews_block_escapes_html_in_review_text(engine):
         from app.services.review_summary import active_reviews
 
         reviews = session.scalars(active_reviews(owner_id="user-a", target_id="a")).all()
-    block = _reviews_block(reviews)
+    block, _ = _reviews_block(reviews)
     assert "<script>" not in block
     assert "&lt;script&gt;&amp;bad" in block
 
@@ -164,14 +164,21 @@ def test_reviews_block_escapes_html_in_review_text(engine):
 
 def test_answer_question_returns_parsed_reply_and_passes_reviews_to_model(engine):
     make_target(engine)
-    seed(engine, "a", [5, 2])
-    gemini = FakeGemini('{"status": "answered", "answer": "Good coffee.", "review_ids": ["1"]}')
+    seed_reviews(
+        engine, "a", [{"id": "r1", "text": "Good coffee", "rating": 5}, {"id": "r2", "rating": 2}]
+    )
+    gemini = FakeGemini('{"status": "answered", "answer": "Good coffee.", "review_ids": ["r1"]}')
 
     result = answer_question(
         engine, gemini, owner_id="user-a", target_id="a", payload={"question": "How is it?"}
     )
 
-    assert result == {"status": "answered", "answer": "Good coffee.", "review_ids": ["1"]}
+    assert result == {
+        "status": "answered",
+        "answer": "Good coffee.",
+        "review_ids": ["r1"],
+        "reviews_considered": 2,
+    }
     # The model received the question and a reviews block built from persisted reviews.
     assert len(gemini.calls) == 1
     user_content = gemini.calls[0]["user_content"]
@@ -296,7 +303,12 @@ def test_owner_can_ask_a_question_over_api(qa_client, auth_header):
         headers=auth_header("user-a"),
     )
     assert response.status_code == 200
-    assert response.get_json() == {"status": "answered", "answer": "Mixed.", "review_ids": []}
+    assert response.get_json() == {
+        "status": "answered",
+        "answer": "Mixed.",
+        "review_ids": [],
+        "reviews_considered": 2,
+    }
 
 
 def test_question_requires_authentication(qa_client):
@@ -406,9 +418,10 @@ def test_context_is_bounded_by_character_budget(engine):
 def test_character_budget_always_includes_at_least_one_review(engine):
     make_target(engine)
     seed_reviews(engine, "a", [{"id": "r1", "text": "y" * 500, "rating": 4}])
-    block = _reviews_block_from(engine)
+    block, sent_ids = _reviews_block_from(engine)
     # A single oversized review is still included so the block is never empty.
     assert 'id="r1"' in block
+    assert sent_ids == ["r1"]
 
 
 def _reviews_block_from(engine):
@@ -560,6 +573,7 @@ def test_controlled_insufficient_evidence_reply_is_passed_through(engine):
         "status": "insufficient_evidence",
         "answer": "The reviews do not say.",
         "review_ids": [],
+        "reviews_considered": 1,
     }
 
 
@@ -590,3 +604,157 @@ def test_model_boundary_is_called_exactly_once_per_question(engine):
     answer_question(engine, gemini, owner_id="user-a", target_id="a", payload={"question": "q"})
 
     assert len(gemini.calls) == 1
+
+
+# --- S2-011: answers stay tied to the supplied review evidence -----------------------------
+#
+# A small controlled dataset where the right answer is known: two reviews complain about
+# slow service, two praise the food, one is unrelated. The fake model plays back the kind
+# of reply real Gemini gives; the tests prove the application keeps only citations of
+# reviews that were actually supplied and rejects replies that break the format.
+
+PIO_PIO_REVIEWS = [
+    {"id": "slow-1", "rating": 2, "text": "Food was great but we waited 40 minutes."},
+    {"id": "slow-2", "rating": 1, "text": "Service was so slow, staff ignored us."},
+    {"id": "food-1", "rating": 5, "text": "Best rotisserie chicken in the city!"},
+    {"id": "food-2", "rating": 5, "text": "The green sauce is amazing."},
+    {"id": "other-1", "rating": 4, "text": "Nice decor and music."},
+]
+
+
+def ask(engine, reply, question="What do customers complain about?", **kwargs):
+    make_target(engine)
+    seed_reviews(engine, "a", PIO_PIO_REVIEWS)
+    gemini = FakeGemini(reply)
+    result = answer_question(
+        engine, gemini, owner_id="user-a", target_id="a", payload={"question": question}, **kwargs
+    )
+    return result, gemini
+
+
+def test_supported_answer_cites_the_reviews_it_is_based_on(engine):
+    result, gemini = ask(
+        engine,
+        '{"status": "answered", "answer": "Two reviewers complain about slow service.",'
+        ' "review_ids": ["slow-1", "slow-2"]}',
+    )
+
+    assert result == {
+        "status": "answered",
+        "answer": "Two reviewers complain about slow service.",
+        "review_ids": ["slow-1", "slow-2"],
+        "reviews_considered": 5,
+    }
+    # Every review in the dataset was supplied as evidence, so the model saw them all.
+    user_content = gemini.calls[0]["user_content"]
+    for review in PIO_PIO_REVIEWS:
+        assert f'id="{review["id"]}"' in user_content
+
+
+def test_invented_review_ids_are_removed_from_the_evidence(engine):
+    result, _ = ask(
+        engine,
+        '{"status": "answered", "answer": "Service is slow.",'
+        ' "review_ids": ["slow-1", "made-up", "slow-2"]}',
+    )
+
+    assert result["review_ids"] == ["slow-1", "slow-2"]
+
+
+def test_review_ids_are_deduplicated_and_returned_as_strings(engine):
+    make_target(engine)
+    seed_reviews(engine, "a", [{"id": "7", "text": "slow"}, {"id": "9", "text": "slow too"}])
+    gemini = FakeGemini('{"status": "answered", "answer": "Slow.", "review_ids": [7, "7", "9"]}')
+
+    result = answer_question(
+        engine, gemini, owner_id="user-a", target_id="a", payload={"question": "q"}
+    )
+
+    assert result["review_ids"] == ["7", "9"]
+
+
+def test_review_left_out_by_the_context_budget_cannot_be_cited(engine):
+    # The character budget only fits the newest review, so the older one is never sent.
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    make_target(engine)
+    seed_reviews(
+        engine,
+        "a",
+        [
+            {"id": "new", "text": "slow service", "created_at": now},
+            {"id": "old", "text": "slow service again", "created_at": now - timedelta(days=1)},
+        ],
+    )
+    gemini = FakeGemini('{"status": "answered", "answer": "Slow.", "review_ids": ["new", "old"]}')
+
+    result = answer_question(
+        engine,
+        gemini,
+        owner_id="user-a",
+        target_id="a",
+        payload={"question": "q"},
+        max_context_chars=15,
+    )
+
+    assert result["review_ids"] == ["new"]
+    assert result["reviews_considered"] == 1
+
+
+def test_answer_whose_citations_are_all_invalid_is_kept_without_evidence(engine):
+    result, _ = ask(
+        engine,
+        '{"status": "answered", "answer": "Service is slow.", "review_ids": ["nope", 3]}',
+    )
+
+    assert result["status"] == "answered"
+    assert result["answer"] == "Service is slow."
+    assert result["review_ids"] == []
+
+
+@pytest.mark.parametrize("review_ids", ['"slow-1"', "null", '{"id": "slow-1"}'])
+def test_non_list_review_ids_become_empty(engine, review_ids):
+    result, _ = ask(
+        engine, f'{{"status": "answered", "answer": "Slow.", "review_ids": {review_ids}}}'
+    )
+
+    assert result["review_ids"] == []
+
+
+def test_out_of_scope_reply_never_cites_reviews(engine):
+    result, _ = ask(
+        engine,
+        '{"status": "out_of_scope", "answer": "I can only answer about these reviews.",'
+        ' "review_ids": ["slow-1"]}',
+        question="What is the weather today?",
+    )
+
+    assert result["status"] == "out_of_scope"
+    assert result["review_ids"] == []
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        '{"status": "maybe", "answer": "Slow.", "review_ids": []}',
+        '{"answer": "Slow.", "review_ids": []}',
+        '{"status": "answered", "answer": "   ", "review_ids": []}',
+        '{"status": "answered", "review_ids": ["slow-1"]}',
+        '{"status": "answered", "answer": 42, "review_ids": []}',
+    ],
+)
+def test_reply_with_bad_status_or_answer_maps_to_qa_unavailable(engine, reply):
+    with pytest.raises(QaUnavailable):
+        ask(engine, reply)
+
+
+def test_bad_model_reply_returns_503_over_api(qa_client, auth_header):
+    app = qa_client('{"status": "maybe", "answer": "Slow.", "review_ids": []}')
+    response = app.test_client().post(
+        "/api/targets/a/questions",
+        json={"question": "What do customers complain about?"},
+        headers=auth_header("user-a"),
+    )
+
+    assert response.status_code == 503
