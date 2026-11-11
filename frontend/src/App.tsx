@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
@@ -12,14 +12,27 @@ function App() {
   const [identity, setIdentity] = useState('')
   const [registering, setRegistering] = useState(false)
   const [message, setMessage] = useState('')
+  const userIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next)
-      setIdentity('')
-      setError('')
+      // Supabase re-emits SIGNED_IN whenever the tab regains focus. Only reset the
+      // verified identity when the user actually changes, so refocusing the tab does
+      // not unmount the page and refetch everything.
+      const nextUserId = next?.user.id ?? null
+      if (nextUserId !== userIdRef.current) {
+        userIdRef.current = nextUserId
+        setIdentity('')
+        setError('')
+      }
+      // Keep the same session object when nothing changed so effects keyed on it don't rerun.
+      setSession((prev) =>
+        prev && next && prev.user.id === next.user.id && prev.access_token === next.access_token
+          ? prev
+          : next,
+      )
       setLoading(false)
     })
     return () => subscription.unsubscribe()
