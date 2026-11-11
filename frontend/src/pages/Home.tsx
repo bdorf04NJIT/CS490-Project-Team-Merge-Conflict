@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import CreateTargetForm from '../components/CreateTargetForm'
 import TargetList from '../components/TargetList'
 import { targetIdFromPath, targetPath, usePath } from '../hooks/usePath'
@@ -15,6 +15,10 @@ export default function Home({ email, accessToken, busy, onLogout }: HomeProps) 
   const [refreshKey, setRefreshKey] = useState(0)
   const { path, navigate } = usePath()
   const targetId = targetIdFromPath(path)
+
+  useEffect(() => {
+    if (!targetId) document.title = 'Your targets | ReviewLens AI'
+  }, [targetId])
 
   return (
     <section aria-labelledby="home-heading">
@@ -39,6 +43,7 @@ export default function Home({ email, accessToken, busy, onLogout }: HomeProps) 
           accessToken={accessToken}
           targetId={targetId}
           onBack={() => navigate('/')}
+          onSwitch={(id) => navigate(targetPath(id))}
         />
       ) : (
         <div className="mx-auto mt-2 max-w-xl">

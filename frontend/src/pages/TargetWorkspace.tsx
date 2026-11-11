@@ -1,13 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import IngestionStatus from '../components/IngestionStatus'
 import ReviewCsvImport from '../components/ReviewCsvImport'
 import ReviewList from '../components/ReviewList'
 import ReviewQa from '../components/ReviewQa'
 import ReviewSummary from '../components/ReviewSummary'
+import TargetSwitcher from '../components/TargetSwitcher'
 import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
 import type { TargetWorkspace as Workspace } from '../api/targets'
 
-type Props = { accessToken: string; targetId: string; onBack: () => void }
+type Props = {
+  accessToken: string
+  targetId: string
+  onBack: () => void
+  // S2-017: when provided, the header offers a switcher between the user's own targets.
+  onSwitch?: (id: string) => void
+}
 type Result = { key: string; targetId: string; target: Workspace | null; error: string }
 type Ingest = {
   targetId: string
@@ -15,11 +22,23 @@ type Ingest = {
   message: string
 }
 
-export default function TargetWorkspace({ accessToken, targetId, onBack }: Props) {
+export default function TargetWorkspace({ accessToken, targetId, onBack, onSwitch }: Props) {
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<Result | null>(null)
   const [ingest, setIngest] = useState<Ingest | null>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
   const requestKey = `${targetId}:${attempt}`
+
+  // When a target finishes loading (on open or after a switch), name it in the browser
+  // tab and move focus to its heading, per docs/ui-ux-context.md. Keyed on the loaded
+  // target id, so refreshing the same target (e.g. after ingestion) doesn't steal focus.
+  const loadedId = result?.target?.id ?? null
+  const loadedName = result?.target?.name ?? null
+  useEffect(() => {
+    if (!loadedId || !loadedName) return
+    document.title = `${loadedName} | ReviewLens AI`
+    headingRef.current?.focus()
+  }, [loadedId, loadedName])
 
   useEffect(() => {
     let cancelled = false
@@ -120,11 +139,21 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
 
   return (
     <section aria-labelledby="workspace-heading" className="mt-8">
-      {backLink}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {backLink}
+        {onSwitch && (
+          <TargetSwitcher accessToken={accessToken} activeId={targetId} onSwitch={onSwitch} />
+        )}
+      </div>
       <p className="mt-4 text-xs font-semibold tracking-wide text-indigo-600 uppercase">
         Analysis target workspace
       </p>
-      <h3 id="workspace-heading" className="mt-1 text-lg font-semibold break-words text-slate-900">
+      <h3
+        id="workspace-heading"
+        ref={headingRef}
+        tabIndex={-1}
+        className="mt-1 text-lg font-semibold break-words text-slate-900 focus:outline-none"
+      >
         {target.name}
       </h3>
       <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:gap-10">
@@ -206,7 +235,12 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
           />
           {/* The review summary belongs with the data, so it sits under ingestion. */}
           {ingestion && (
-            <ReviewSummary accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
+            <ReviewSummary
+              accessToken={accessToken}
+              targetId={targetId}
+              targetName={target.name}
+              refreshKey={attempt}
+            />
           )}
         </div>
 
@@ -215,7 +249,13 @@ export default function TargetWorkspace({ accessToken, targetId, onBack }: Props
           {ingestion ? (
             <>
               <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-5 shadow-xs">
-                <ReviewQa accessToken={accessToken} targetId={targetId} />
+                {/* Keyed by target so a switch always starts with an empty question and answer. */}
+                <ReviewQa
+                  key={targetId}
+                  accessToken={accessToken}
+                  targetId={targetId}
+                  targetName={target.name}
+                />
               </div>
               <ReviewList accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
             </>
