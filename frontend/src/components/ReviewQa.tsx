@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { askQuestion, TargetError } from '../api/targets'
 import type { QaAnswer } from '../api/targets'
 
-type Props = { accessToken: string; targetId: string }
+type Props = { accessToken: string; targetId: string; targetName?: string }
 
 // S2-011: say how many reviews support the answer out of how many were read, so
 // "2 reviews" isn't mistaken for "only 2 reviews were looked at".
@@ -19,7 +19,7 @@ function evidenceLine({ review_ids, reviews_considered }: QaAnswer): string {
 // No persistent chat history is required; we keep only the latest answer. The active
 // target stays clear because this lives inside the target workspace, which already
 // displays the target name and platform above it.
-export default function ReviewQa({ accessToken, targetId }: Props) {
+export default function ReviewQa({ accessToken, targetId, targetName }: Props) {
   const [question, setQuestion] = useState('')
   const [asking, setAsking] = useState(false)
   const [answer, setAnswer] = useState<QaAnswer | null>(null)
@@ -51,8 +51,13 @@ export default function ReviewQa({ accessToken, targetId }: Props) {
         Ask about these reviews
       </h4>
       <p id="qa-help" className="mt-1 text-sm text-slate-600">
-        Ask a natural-language question. ReviewLens answers only from the reviews ingested for this
-        target.
+        Ask a natural-language question. ReviewLens answers only from the reviews ingested for{' '}
+        {targetName ? (
+          <span className="font-medium text-slate-900">{targetName}</span>
+        ) : (
+          'this target'
+        )}
+        .
       </p>
       <form className="mt-3" onSubmit={(event) => void submit(event)}>
         <label htmlFor="qa-question" className="block text-sm font-medium text-slate-700">
