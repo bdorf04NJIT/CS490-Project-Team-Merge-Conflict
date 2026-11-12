@@ -53,7 +53,8 @@ def test_expected_categories_follow_reviewlens_contract():
 
 
 def test_system_prompt_covers_all_scope_guard_behaviors():
-    prompt = build_system_prompt(**load_cases(FIXTURE)["target"])
+    target = load_cases(FIXTURE)["target"]
+    prompt = build_system_prompt(target_name=target["name"], platform=target["platform"])
     for meaning in (
         "supplied reviews",
         "outside knowledge",

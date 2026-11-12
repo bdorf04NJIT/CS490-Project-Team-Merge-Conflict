@@ -61,7 +61,8 @@ def main(argv=None):
     data = load_cases()
     reviews = [SimpleNamespace(**row) for row in data["reviews"]]
     block, sent_ids = _reviews_block(reviews)
-    system_prompt = build_system_prompt(**data["target"])
+    target = data["target"]
+    system_prompt = build_system_prompt(target_name=target["name"], platform=target["platform"])
     provider = GeminiReviewAnswerer(key, model=args.model)
     cases = data["cases"][: args.limit or None]
     counts = Counter()
