@@ -24,6 +24,7 @@ test('submits the question to the target and shows the answer with evidence coun
     status: 'answered',
     answer: 'Slow service is the top complaint.',
     review_ids: ['a', 'b'],
+    reviews_considered: 50,
   }
   const fetchMock = vi.fn().mockResolvedValue(reply(200, body))
   vi.stubGlobal('fetch', fetchMock)
@@ -32,7 +33,7 @@ test('submits the question to the target and shows the answer with evidence coun
   await ask('What complaints appear most frequently?')
 
   expect(await screen.findByText('Slow service is the top complaint.')).toBeTruthy()
-  expect(screen.getByText('Based on 2 reviews.')).toBeTruthy()
+  expect(screen.getByText('2 of 50 reviews mention this.')).toBeTruthy()
   expect(fetchMock).toHaveBeenCalledWith('/api/targets/t1/questions', {
     method: 'POST',
     headers: { Authorization: 'Bearer tok', 'Content-Type': 'application/json' },
@@ -94,4 +95,61 @@ test('reports a network failure', async () => {
   await ask('Anything?')
 
   expect((await screen.findByRole('alert')).textContent).toContain('Unable to connect')
+})
+
+// S2-011: the evidence line says how many reviews support the answer out of how many
+// were read, so a small count isn't mistaken for "only a few reviews were checked".
+test.each([
+  [['a'], 1, '1 of 1 review mentions this.'],
+  [['a'], 12, '1 of 12 reviews mentions this.'],
+  [['a', 'b', 'c'], 12, '3 of 12 reviews mention this.'],
+])('evidence line for %j of %i reviews', async (reviewIds, considered, expected) => {
+  const body = {
+    status: 'answered',
+    answer: 'Answer.',
+    review_ids: reviewIds,
+    reviews_considered: considered,
+  }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, body)))
+  render(<ReviewQa accessToken="tok" targetId="t1" />)
+
+  await ask('Anything?')
+
+  expect(await screen.findByText(expected)).toBeTruthy()
+})
+
+test('falls back to the cited count when the total is missing', async () => {
+  const body = { status: 'answered', answer: 'Answer.', review_ids: ['a', 'b'] }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, body)))
+  render(<ReviewQa accessToken="tok" targetId="t1" />)
+
+  await ask('Anything?')
+
+  expect(await screen.findByText('Based on 2 reviews.')).toBeTruthy()
+})
+
+test('shows an answer with no valid citations without an evidence line', async () => {
+  const body = {
+    status: 'answered',
+    answer: 'Service is slow.',
+    review_ids: [],
+    reviews_considered: 50,
+  }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, body)))
+  render(<ReviewQa accessToken="tok" targetId="t1" />)
+
+  await ask('What do customers complain about?')
+
+  expect(await screen.findByText('Service is slow.')).toBeTruthy()
+  expect(screen.queryByText(/mention|Based on/)).toBeNull()
+})
+
+test('rejects an answer with an invalid reviews_considered', async () => {
+  const body = { status: 'answered', answer: 'A.', review_ids: [], reviews_considered: 'many' }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, body)))
+  render(<ReviewQa accessToken="tok" targetId="t1" />)
+
+  await ask('Anything?')
+
+  expect((await screen.findByRole('alert')).textContent).toContain('Unable to answer that')
 })

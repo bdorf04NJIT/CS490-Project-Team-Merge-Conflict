@@ -58,7 +58,7 @@ from html import escape
 from sqlalchemy.orm import Session
 
 from ..errors import QaUnavailable, ValidationError
-from .qa_prompt import build_system_prompt
+from .qa_prompt import OUT_OF_SCOPE, RESPONSE_STATUSES, build_system_prompt
 from .review_summary import qa_context_reviews
 from .targets import find_owned_target
 
@@ -105,23 +105,75 @@ def _question(payload):
 def _reviews_block(reviews, *, max_chars=None):
     """Render reviews as an XML-ish block, bounded by an optional character budget.
 
+    Returns ``(block, sent_ids)``: the block text and the ids of the reviews actually
+    placed in it, in order. The ids are what the model's citations are checked against.
+
     Reviews arrive newest-first. When ``max_chars`` is set, reviews are added until the
     next one would push the accumulated review text over the budget, keeping the most
     recent reviews that fit. The budget counts review text so the cap is about model
     input size; the first review is always included so the block is never empty.
     """
     lines = ["<reviews>"]
+    sent_ids = []
     used_chars = 0
     for index, review in enumerate(reviews):
         text = escape((review.text or "").strip())
         if max_chars is not None and index > 0 and used_chars + len(text) > max_chars:
             break
         used_chars += len(text)
+        sent_ids.append(str(review.id))
         lines.append(
             f'  <review id="{escape(str(review.id), quote=True)}" rating="{review.rating}">{text}</review>'
         )
     lines.append("</reviews>")
-    return "\n".join(lines)
+    return "\n".join(lines), sent_ids
+
+
+def _parse_reply(reply, sent_ids):
+    """Check the model's reply before it reaches the user (S2-011).
+
+    The answer must stay tied to the reviews we actually supplied, so the model's
+    output is not trusted as-is:
+
+    - ``status`` must be one of the prompt's statuses and ``answer`` must be non-empty
+      text. Anything else means the model didn't follow the format, which is surfaced
+      as a transient failure (503) rather than shown to the user.
+    - ``review_ids`` keeps only ids that were in the supplied <reviews> block, as
+      strings, without duplicates, in the model's order. Ids the model invented (or
+      reviews dropped by the context budget) are removed so they can't be shown as
+      evidence. An out-of-scope decline never cites reviews.
+
+    If an "answered" reply cites no valid reviews, the answer is still returned with an
+    empty ``review_ids``; the UI then shows the answer without an evidence count.
+    """
+    try:
+        data = json.loads(reply)
+    except (ValueError, TypeError) as exc:
+        raise QaUnavailable() from exc
+    if not isinstance(data, dict):
+        raise QaUnavailable()
+
+    status = data.get("status")
+    answer = data.get("answer")
+    if status not in RESPONSE_STATUSES or not isinstance(answer, str) or not answer.strip():
+        raise QaUnavailable()
+
+    cited = data.get("review_ids")
+    allowed = set(sent_ids)
+    review_ids = []
+    if status != OUT_OF_SCOPE and isinstance(cited, list):
+        for raw in cited:
+            if isinstance(raw, (str, int)) and not isinstance(raw, bool):
+                review_id = str(raw).strip()
+                if review_id in allowed and review_id not in review_ids:
+                    review_ids.append(review_id)
+
+    return {
+        "status": status,
+        "answer": answer.strip(),
+        "review_ids": review_ids,
+        "reviews_considered": len(sent_ids),
+    }
 
 
 def answer_question(
@@ -155,22 +207,12 @@ def answer_question(
         raise ValidationError("This target has no reviews to answer from yet.")
 
     system_prompt = build_system_prompt(target_name=name, platform=platform)
-    reviews_block = _reviews_block(reviews, max_chars=max_context_chars)
+    reviews_block, sent_ids = _reviews_block(reviews, max_chars=max_context_chars)
     user_content = f"Question: {question}\n\n{reviews_block}"
 
     reply = gemini.answer(system_prompt=system_prompt, user_content=user_content)
 
     # The prompt instructs the model to return only a JSON object with these fields.
-    # A non-JSON or malformed reply means the model didn't cooperate; treat it as a
-    # transient assistant failure (503) rather than a 500 from an uncaught parse error.
-    try:
-        data = json.loads(reply)
-    except (ValueError, TypeError) as exc:
-        raise QaUnavailable() from exc
-    if not isinstance(data, dict):
-        raise QaUnavailable()
-    return {
-        "status": data.get("status"),
-        "answer": data.get("answer"),
-        "review_ids": data.get("review_ids", []),
-    }
+    # _parse_reply rejects malformed replies (503) and keeps only citations of reviews
+    # that were actually supplied.
+    return _parse_reply(reply, sent_ids)

@@ -236,11 +236,9 @@ export async function getReviewSummary(
 // The user asks a natural-language question about the active target's reviews and
 // ReviewLens (the LLM) answers from those reviews only. The answer contract mirrors
 // the system prompt in backend/app/services/qa_prompt.py: the model replies with a
-// status, an answer, and the ids of the reviews it used as evidence.
-//
-// NOTE: the backend endpoint that runs the model is owned by other stories
-// (S2-010 review context, S2-011 answer-from-evidence) and is not built yet. This
-// client isolates the single call so wiring it to the real route is a one-line change.
+// status, an answer, and the ids of the reviews it used as evidence. The backend keeps
+// only ids of reviews it actually supplied to the model (S2-011) and reports how many
+// reviews the model was given in `reviews_considered`.
 
 export const QA_STATUSES = ['answered', 'insufficient_evidence', 'out_of_scope'] as const
 export type QaStatus = (typeof QA_STATUSES)[number]
@@ -249,6 +247,8 @@ export type QaAnswer = {
   status: QaStatus
   answer: string
   review_ids: string[]
+  /** How many reviews were supplied to the model as evidence. */
+  reviews_considered?: number
 }
 
 const QA_MESSAGES: Record<number, string> = {
@@ -267,7 +267,9 @@ function isQaAnswer(body: unknown): body is QaAnswer {
     typeof answer.status === 'string' &&
     (QA_STATUSES as readonly string[]).includes(answer.status) &&
     Array.isArray(answer.review_ids) &&
-    answer.review_ids.every((id) => typeof id === 'string')
+    answer.review_ids.every((id) => typeof id === 'string') &&
+    (answer.reviews_considered === undefined ||
+      (Number.isInteger(answer.reviews_considered) && answer.reviews_considered >= 0))
   )
 }
 
