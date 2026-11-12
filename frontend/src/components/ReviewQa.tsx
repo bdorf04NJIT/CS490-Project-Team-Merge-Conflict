@@ -97,6 +97,13 @@ export default function ReviewQa({ accessToken, targetId, targetName }: Props) {
           <h5 id="qa-answer-heading" className="font-medium text-slate-700">
             ReviewLens answer
           </h5>
+          {/* S2-012: make it clear the reviews don't cover this, so the missing evidence
+              line isn't mistaken for a bug or read as a "no". */}
+          {answer.status === 'insufficient_evidence' && (
+            <p className="mt-2 inline-block rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+              Not covered by these reviews
+            </p>
+          )}
           <p role="status" className="mt-2 leading-6 whitespace-pre-wrap text-slate-900">
             {answer.answer}
           </p>

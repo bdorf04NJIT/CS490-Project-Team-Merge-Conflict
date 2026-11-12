@@ -31,6 +31,11 @@ def test_prompt_names_the_target_and_platform(prompt):
         "Answer only from the supplied reviews",
         "Never invent information",
         "say so plainly instead of guessing",
+        # S2-012: separate what the reviews support from what they don't mention.
+        'never mention is unknown, not a "no"',
+        "Keep two things separate: what the reviews say, and what they don't mention",
+        "covered, answer that part and state which part the reviews don't mention",
+        "covered by them. Say plainly that the reviews don't mention it",
         "Decline questions unrelated to these reviews",
         "Decline questions about any other business",
         "platform other than Google Maps",

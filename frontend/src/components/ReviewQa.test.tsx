@@ -153,3 +153,38 @@ test('rejects an answer with an invalid reviews_considered', async () => {
 
   expect((await screen.findByRole('alert')).textContent).toContain('Unable to answer that')
 })
+
+// S2-012: a question the reviews don't cover is answered plainly and labeled, with no
+// evidence line, so it can't be read as a supported answer.
+test('labels an insufficient-evidence answer and shows no evidence line', async () => {
+  const body = {
+    status: 'insufficient_evidence',
+    answer: 'The reviews do not mention the parking lot.',
+    review_ids: [],
+    reviews_considered: 5,
+  }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, body)))
+  render(<ReviewQa accessToken="tok" targetId="t1" />)
+
+  await ask('Do customers think the parking lot is safe at night?')
+
+  expect(await screen.findByText('The reviews do not mention the parking lot.')).toBeTruthy()
+  expect(screen.getByText('Not covered by these reviews')).toBeTruthy()
+  expect(screen.queryByText(/mention this|Based on/)).toBeNull()
+})
+
+test('does not label a supported answer as not covered', async () => {
+  const body = {
+    status: 'answered',
+    answer: 'Reviewers love the chicken. The reviews do not mention parking.',
+    review_ids: ['food-1'],
+    reviews_considered: 5,
+  }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, body)))
+  render(<ReviewQa accessToken="tok" targetId="t1" />)
+
+  await ask('How is the food, and is parking easy to find?')
+
+  expect(await screen.findByText('1 of 5 reviews mentions this.')).toBeTruthy()
+  expect(screen.queryByText('Not covered by these reviews')).toBeNull()
+})
