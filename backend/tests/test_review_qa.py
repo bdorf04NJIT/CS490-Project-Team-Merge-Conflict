@@ -758,3 +758,91 @@ def test_bad_model_reply_returns_503_over_api(qa_client, auth_header):
     )
 
     assert response.status_code == 503
+
+
+# --- S2-012: questions the reviews don't cover --------------------------------------------
+#
+# PIO_PIO_REVIEWS talks about food, service, and decor, and never mentions parking, so the
+# absence of evidence is known. The fake model plays back the replies real Gemini gives
+# for these questions.
+
+
+def test_controlled_dataset_never_mentions_parking():
+    # Guard for the tests below: they rely on parking being absent from the reviews.
+    assert not any("parking" in review["text"].lower() for review in PIO_PIO_REVIEWS)
+
+
+def test_unmentioned_topic_returns_insufficient_evidence(engine):
+    result, gemini = ask(
+        engine,
+        '{"status": "insufficient_evidence",'
+        ' "answer": "The reviews do not mention the parking lot.", "review_ids": []}',
+        question="Do customers think the parking lot is safe at night?",
+    )
+
+    assert result == {
+        "status": "insufficient_evidence",
+        "answer": "The reviews do not mention the parking lot.",
+        "review_ids": [],
+        "reviews_considered": 5,
+    }
+    # The model was still given every review to look through before saying so.
+    assert gemini.calls[0]["user_content"].count("<review ") == 5
+
+
+def test_insufficient_evidence_reply_cannot_cite_reviews(engine):
+    # "No review covers this" and "these reviews support it" contradict each other, so
+    # citations on an insufficient-evidence reply are dropped instead of shown as proof.
+    result, _ = ask(
+        engine,
+        '{"status": "insufficient_evidence", "answer": "The reviews do not mention parking.",'
+        ' "review_ids": ["slow-1", "food-1"]}',
+        question="Is parking easy to find?",
+    )
+
+    assert result["status"] == "insufficient_evidence"
+    assert result["review_ids"] == []
+
+
+def test_partly_covered_question_is_answered_with_the_gap_stated(engine):
+    # Food is covered, parking is not: the covered part is answered with its evidence and
+    # the missing part is stated, rather than the whole question being refused.
+    result, _ = ask(
+        engine,
+        '{"status": "answered", "answer": "Reviewers love the chicken and the green sauce.'
+        ' The reviews do not mention parking.", "review_ids": ["food-1", "food-2"]}',
+        question="How is the food, and is parking easy to find?",
+    )
+
+    assert result["status"] == "answered"
+    assert result["review_ids"] == ["food-1", "food-2"]
+    assert "do not mention parking" in result["answer"]
+
+
+def test_model_is_told_to_separate_supported_from_missing_information(engine):
+    _, gemini = ask(
+        engine,
+        '{"status": "insufficient_evidence", "answer": "Not mentioned.", "review_ids": []}',
+        question="Is there free wifi?",
+    )
+
+    system_prompt = gemini.calls[0]["system_prompt"]
+    assert "Keep two things separate: what the reviews say, and what they don't mention" in (
+        system_prompt
+    )
+    assert 'never mention is unknown, not a "no"' in system_prompt
+
+
+def test_insufficient_evidence_is_a_normal_answer_over_api(qa_client, auth_header):
+    app = qa_client(
+        '{"status": "insufficient_evidence", "answer": "The reviews do not mention wifi.",'
+        ' "review_ids": []}'
+    )
+    response = app.test_client().post(
+        "/api/targets/a/questions",
+        json={"question": "Is there free wifi?"},
+        headers=auth_header("user-a"),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "insufficient_evidence"

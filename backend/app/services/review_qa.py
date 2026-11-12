@@ -58,7 +58,7 @@ from html import escape
 from sqlalchemy.orm import Session
 
 from ..errors import QaUnavailable, ValidationError
-from .qa_prompt import OUT_OF_SCOPE, RESPONSE_STATUSES, build_system_prompt
+from .qa_prompt import ANSWERED, RESPONSE_STATUSES, build_system_prompt
 from .review_summary import qa_context_reviews
 from .targets import find_owned_target
 
@@ -141,7 +141,9 @@ def _parse_reply(reply, sent_ids):
     - ``review_ids`` keeps only ids that were in the supplied <reviews> block, as
       strings, without duplicates, in the model's order. Ids the model invented (or
       reviews dropped by the context budget) are removed so they can't be shown as
-      evidence. An out-of-scope decline never cites reviews.
+      evidence. Only an "answered" reply cites reviews: an out-of-scope decline has
+      nothing to cite, and an insufficient-evidence reply (S2-012) means no review covers
+      the question, so any ids it lists are dropped rather than shown as support.
 
     If an "answered" reply cites no valid reviews, the answer is still returned with an
     empty ``review_ids``; the UI then shows the answer without an evidence count.
@@ -161,7 +163,7 @@ def _parse_reply(reply, sent_ids):
     cited = data.get("review_ids")
     allowed = set(sent_ids)
     review_ids = []
-    if status != OUT_OF_SCOPE and isinstance(cited, list):
+    if status == ANSWERED and isinstance(cited, list):
         for raw in cited:
             if isinstance(raw, (str, int)) and not isinstance(raw, bool):
                 review_id = str(raw).strip()
