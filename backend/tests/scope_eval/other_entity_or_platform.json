@@ -1,0 +1,79 @@
+{
+  "story": "S2-015",
+  "description": "Questions about another business, product, or review platform. Out-of-scope cases must be declined; the in-scope controls must still be answered, because the reviews themselves contain that evidence.",
+  "target": { "name": "Joe's Coffee", "platform": "google_maps" },
+  "reviews": [
+    { "key": "bean_barn", "rating": 5, "text": "Best latte in town, much better than Bean Barn next door." },
+    { "key": "wifi", "rating": 3, "text": "Friendly staff, but the wifi kept dropping." },
+    { "key": "croissants", "rating": 2, "text": "Croissants were stale on Sunday morning." },
+    { "key": "yelp", "rating": 5, "text": "Great cold brew. I found this place through Yelp." },
+    { "key": "pricey", "rating": 4, "text": "Cozy seating, a bit pricey for what you get." }
+  ],
+  "cases": [
+    {
+      "id": "entity-obvious-starbucks",
+      "category": "other_entity",
+      "phrasing": "obvious",
+      "question": "What do customers think about Starbucks?",
+      "expected_status": "out_of_scope"
+    },
+    {
+      "id": "entity-reasonable-bakery",
+      "category": "other_entity",
+      "phrasing": "reasonable",
+      "question": "Is the bakery across the street any good?",
+      "expected_status": "out_of_scope"
+    },
+    {
+      "id": "entity-reasonable-nearby",
+      "category": "other_entity",
+      "phrasing": "reasonable",
+      "question": "Which coffee shop nearby has better reviews?",
+      "expected_status": "out_of_scope"
+    },
+    {
+      "id": "platform-obvious-yelp",
+      "category": "other_platform",
+      "phrasing": "obvious",
+      "question": "What are Joe's Coffee's Yelp reviews like?",
+      "expected_status": "out_of_scope"
+    },
+    {
+      "id": "platform-reasonable-tripadvisor",
+      "category": "other_platform",
+      "phrasing": "reasonable",
+      "question": "Do people on Tripadvisor rate it higher than they do here?",
+      "expected_status": "out_of_scope"
+    },
+    {
+      "id": "platform-reasonable-amazon",
+      "category": "other_platform",
+      "phrasing": "reasonable",
+      "question": "What's the average Amazon rating for their bagged coffee beans?",
+      "expected_status": "out_of_scope"
+    },
+    {
+      "id": "comparison-without-evidence",
+      "category": "comparison",
+      "phrasing": "reasonable",
+      "question": "How does Joe's Coffee compare with Starbucks?",
+      "expected_status": "out_of_scope"
+    },
+    {
+      "id": "comparison-with-evidence",
+      "category": "comparison",
+      "phrasing": "reasonable",
+      "question": "How do reviewers compare it to Bean Barn?",
+      "expected_status": "answered",
+      "expected_citations": ["bean_barn"]
+    },
+    {
+      "id": "mention-in-reviews",
+      "category": "mention",
+      "phrasing": "reasonable",
+      "question": "Do any reviewers mention Yelp?",
+      "expected_status": "answered",
+      "expected_citations": ["yelp"]
+    }
+  ]
+}
