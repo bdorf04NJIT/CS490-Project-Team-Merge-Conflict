@@ -1,0 +1,25 @@
+{
+  "target": {"name": "Harbor Cafe", "platform": "google_maps"},
+  "reviews": [
+    {"id": "coffee-1", "rating": 5, "text": "Coffee was flavorful and hot; the cappuccino was rich."},
+    {"id": "service-1", "rating": 3, "text": "The barista was friendly, but the line took twenty minutes."},
+    {"id": "pastry-1", "rating": 4, "text": "The croissant was flaky and fresh."}
+  ],
+  "cases": [
+    {"id": "review-01", "category": "in_scope", "question": "What do reviews say about the coffee?", "expected_status": "answered"},
+    {"id": "review-02", "category": "in_scope", "question": "How was the customer service?", "expected_status": "answered"},
+    {"id": "review-03", "category": "in_scope", "question": "Were pastries liked by customers?", "expected_status": "answered"},
+    {"id": "missing-01", "category": "insufficient_evidence", "question": "Is free parking available?", "expected_status": "insufficient_evidence"},
+    {"id": "missing-02", "category": "insufficient_evidence", "question": "Is the restroom wheelchair accessible?", "expected_status": "insufficient_evidence"},
+    {"id": "missing-03", "category": "insufficient_evidence", "question": "How reliable is the Wi-Fi?", "expected_status": "insufficient_evidence"},
+    {"id": "world-01", "category": "general_knowledge", "question": "What is the capital of Japan?", "expected_status": "out_of_scope"},
+    {"id": "world-02", "category": "general_knowledge", "question": "Who won the 2022 football World Cup?", "expected_status": "out_of_scope"},
+    {"id": "world-03", "category": "general_knowledge", "question": "Explain the Pythagorean theorem.", "expected_status": "out_of_scope"},
+    {"id": "other-01", "category": "other_entity", "question": "What do customers say about Pinecone Pizza?", "expected_status": "out_of_scope"},
+    {"id": "other-02", "category": "other_entity", "question": "Compare Harbor Cafe with Lakeside Diner.", "expected_status": "out_of_scope"},
+    {"id": "other-03", "category": "other_entity", "question": "Are Galaxy Phone customers more satisfied than Harbor Cafe visitors?", "expected_status": "out_of_scope"},
+    {"id": "platform-01", "category": "other_platform", "question": "What do Yelp reviewers say about Harbor Cafe?", "expected_status": "out_of_scope"},
+    {"id": "platform-02", "category": "other_platform", "question": "Summarize TripAdvisor reviews for Harbor Cafe.", "expected_status": "out_of_scope"},
+    {"id": "platform-03", "category": "other_platform", "question": "What does Facebook's review page say about Harbor Cafe?", "expected_status": "out_of_scope"}
+  ]
+}
