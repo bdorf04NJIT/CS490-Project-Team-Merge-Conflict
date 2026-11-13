@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..errors import NotFound
-from ..models import AnalysisTarget, IngestionRun, Review
+from ..models import AnalysisTarget, IngestionRun, IngestionRunSkipReason, Review
 
 
 def _owned_target(session, *, target_id, owner_id):
@@ -27,13 +27,24 @@ def _run_output(run):
         "total_count": run.total_count,
         "imported_count": run.imported_count,
         "skipped_count": run.skipped_count,
+        "skip_reasons": {item.reason: item.count for item in run.skip_reasons},
         "message": run.message,
         "started_at": run.started_at.isoformat(),
         "completed_at": run.completed_at.isoformat(),
     }
 
 
-def persist_reviews(engine, *, owner_id, target_id, reviews, skipped_count, source_kind):
+def _reason_rows(skip_reasons):
+    return [
+        IngestionRunSkipReason(reason=reason, count=count)
+        for reason, count in sorted((skip_reasons or {}).items())
+        if count > 0
+    ]
+
+
+def persist_reviews(
+    engine, *, owner_id, target_id, reviews, skipped_count, source_kind, skip_reasons=None
+):
     """Commit run and normalized reviews as one transaction; never replace old reviews."""
     if not reviews:
         raise ValueError("No valid reviews to persist")
@@ -70,6 +81,7 @@ def persist_reviews(engine, *, owner_id, target_id, reviews, skipped_count, sour
             imported_count=len(new_reviews),
             skipped_count=skipped_count,
             message=message,
+            skip_reasons=_reason_rows(skip_reasons),
         )
         session.add(run)
         session.flush()
@@ -79,17 +91,29 @@ def persist_reviews(engine, *, owner_id, target_id, reviews, skipped_count, sour
         return _run_output(run)
 
 
-def record_failed_run(engine, *, owner_id, target_id, source_kind, message):
+def record_failed_run(
+    engine,
+    *,
+    owner_id,
+    target_id,
+    source_kind,
+    message,
+    total_count=0,
+    skipped_count=0,
+    skip_reasons=None,
+):
+    """Record a run that added no reviews; rejected records still keep their counts."""
     with Session(engine) as session, session.begin():
         _owned_target(session, target_id=target_id, owner_id=owner_id)
         run = IngestionRun(
             target_id=target_id,
             source_kind=source_kind,
             status="failed",
-            total_count=0,
+            total_count=total_count,
             imported_count=0,
-            skipped_count=0,
+            skipped_count=skipped_count,
             message=message[:500],
+            skip_reasons=_reason_rows(skip_reasons),
         )
         session.add(run)
         session.flush()

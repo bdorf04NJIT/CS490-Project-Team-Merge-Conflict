@@ -62,7 +62,41 @@ def test_failed_ingestion_records_no_fabricated_reviews(storage):
         message="Provider failed",
     )
     assert run["status"] == "failed"
+    assert run["skip_reasons"] == {}
     assert list_reviews(storage, owner_id="user-a", target_id="a") == []
+
+
+def test_skip_reasons_are_persisted_with_the_run(storage):
+    run = persist_reviews(
+        storage,
+        owner_id="user-a",
+        target_id="a",
+        source_kind="google_maps_csv",
+        reviews=[{"text": "Great", "rating": 5.0}],
+        skipped_count=3,
+        skip_reasons={"missing_text": 2, "invalid_rating": 1},
+    )
+    assert run["skip_reasons"] == {"invalid_rating": 1, "missing_text": 2}
+    stored = latest_run(storage, owner_id="user-a", target_id="a")
+    assert (stored["status"], stored["skipped_count"]) == ("partial", 3)
+    assert stored["skip_reasons"] == {"invalid_rating": 1, "missing_text": 2}
+
+
+def test_failed_run_keeps_counts_of_rejected_records(storage):
+    run = record_failed_run(
+        storage,
+        owner_id="user-a",
+        target_id="a",
+        source_kind="google_maps_csv",
+        message="No usable written reviews with ratings from 1 to 5 were found.",
+        total_count=2,
+        skipped_count=2,
+        skip_reasons={"invalid_rating": 2},
+    )
+    assert run["skip_reasons"] == {"invalid_rating": 2}
+    stored = latest_run(storage, owner_id="user-a", target_id="a")
+    assert (stored["total_count"], stored["imported_count"], stored["skipped_count"]) == (2, 0, 2)
+    assert stored["skip_reasons"] == {"invalid_rating": 2}
 
 
 def test_cross_user_read_and_write_does_not_leak_or_mutate(storage):

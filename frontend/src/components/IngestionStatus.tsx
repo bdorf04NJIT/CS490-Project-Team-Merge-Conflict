@@ -1,4 +1,5 @@
 import type { IngestionState } from '../api/targets'
+import { skippedSentence } from '../lib/skipReasons'
 
 type Props = { ingestion: IngestionState | null }
 
@@ -34,19 +35,17 @@ function details(ingestion: IngestionState): string | null {
   const imported = count(ingestion.imported_count)
   const skipped = count(ingestion.skipped_count)
   const total = count(ingestion.total_count)
+  // Records the backend rejected are never part of the dataset; say so explicitly.
+  const skippedNote = skippedSentence(skipped, ingestion.skip_reasons, total)
   if (ingestion.status === 'failed') {
     // The backend only stores safe, user-facing failure messages.
     const reason = ingestion.message?.trim()
-    return `${reason ? `${reason} ` : ''}No reviews were added by this attempt.`
+    return [reason, skippedNote, 'No reviews were added by this attempt.'].filter(Boolean).join(' ')
   }
   if (imported === null) return null
   // imported_count excludes reviews that were already saved by an earlier run.
   const added = `Added ${plural(imported, 'new review')}.`
-  if (ingestion.status === 'partial' && skipped !== null) {
-    const of = total !== null ? ` of ${total}` : ''
-    return `${added} ${skipped}${of} records couldn't be used and were skipped.`
-  }
-  return added
+  return skippedNote ? `${added} ${skippedNote}` : added
 }
 
 function completedAt(value: unknown) {

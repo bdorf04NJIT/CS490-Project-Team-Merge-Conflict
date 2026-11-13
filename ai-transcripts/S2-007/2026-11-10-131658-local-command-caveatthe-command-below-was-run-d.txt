@@ -1,0 +1,983 @@
+
+> /clear
+
+> Lets do this one
+  Outcome:
+  When ingestion encounters individual records that cannot be processed, the
+  user can determine that those records were not included in the active review
+  dataset.
+
+  Technical Guidance:
+
+  The application does not need to expose raw parser diagnostics to the user.
+
+  A reasonable summary may communicate:
+
+  Number successfully ingested.
+  Number skipped or rejected.
+  A concise reason category when useful.
+  For example:
+
+  missing review text
+  invalid rating
+  malformed source record
+  The exact level of detail is a team design decision.
+
+  The important requirement is that unsuccessful records do not silently count
+  as successfully analyzed data.
+
+  Rules: S2-BR-005 through S2-BR-007
+
+● I'll start by exploring the codebase to see how ingestion currently works.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● S2-005 is already merged into main (#85), so I'll branch S2-007 from
+  origin/main. First, a look at the ingestion code.
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict" && git checkout -q -b feature/S2-007-report-skipped-records
+      origin/main && git lo…)
+  ⎿  Updated backend\tests\test_review_qa.py (+131 -0)
+  ⎿  (a git step in this command can move the working tree, so these may be
+     its changes, not edits) (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Skipped counts are already persisted; what's missing is per-reason categories.
+  Let me check storage, the DB setup, and the frontend display.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Skipped rows are already saved and shown as partial, but reasons for rejection
+  aren't recorded, and all-rejected runs store zero counts. I'm checking how
+  the workspace reads runs and which tests cover this.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Skip reasons now get recorded per run in a new child table, which avoids a
+  schema migration on the deployed database, and the status box will list them
+  and note that skipped records are not in the review dataset. Next I'll wire up
+  the frontend display.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the backend changes. Normalization first:
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/backend" && python - <<'EOF'
+      p='app/services/review_normalization.py'…)
+  ⎿  Updated backend\app\services\review_normalization.py (+31 -8)
+       1  """Canonical Review representation shared by the ingestion and 
+          persistence layers."""
+       2  
+       3 -from dataclasses import dataclass                              
+       3 +from collections import Counter                                
+       4 +from dataclasses import dataclass, field                       
+       5  from decimal import Decimal, InvalidOperation
+       6  
+       7  MAX_REVIEW_LENGTH = 20000
+       8  
+       9 +# User-facing reason categories for records that were not added
+         + to the dataset.                                               
+      10 +# Raw parser diagnostics are deliberately not exposed; each ski
+         +pped record gets                                               
+      11 +# exactly one category, so the per-reason counts always add up 
+         +to skipped_count.                                              
+      12 +MISSING_TEXT = "missing_text"                                  
+      13 +TEXT_TOO_LONG = "text_too_long"                                
+      14 +INVALID_RATING = "invalid_rating"                              
+      15 +MALFORMED_RECORD = "malformed_record"                          
+      16 +SKIP_REASONS = (MISSING_TEXT, TEXT_TOO_LONG, INVALID_RATING, MA
+         +LFORMED_RECORD)                                                
+      17 +                                                               
+      18  
+      19  @dataclass(frozen=True)
+      20  class NormalizedReview:
+     ...
+      32      reviews: list[NormalizedReview]
+      33      total_count: int
+      34      skipped_count: int
+      35 +    skip_reasons: dict[str, int] = field(default_factory=dict) 
+      36  
+      37  
+      38  def _first(row, names):
+     ...
+      62      return None
+      63  
+      64  
+      54 -def normalize_review(row):                                     
+      65 +def classify_review(row):                                      
+      66 +    """Return (review, None) for a usable record, or (None, rea
+         +son) when it is skipped."""                                    
+      67      if not isinstance(row, dict):
+      56 -        return None                                            
+      68 +        return None, MALFORMED_RECORD                          
+      69      text = _first(row, ("review_text", "text", "review", "snipp
+          et", "content"))
+      70      if not text and isinstance(row.get("extracted_snippet"), di
+          ct):
+      71          text = row["extracted_snippet"].get("original")
+     … 44 more lines (ctrl+o to expand)
+
+● Next, the model, storage, and ingestion changes:
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/backend" && python - <<'EOF'
+      p='app/models.py'…)
+  ⎿  Updated backend\app\models.py (+37 -2)
+       1  from datetime import UTC, datetime
+       2  from uuid import uuid4
+       3  
+       4 -from sqlalchemy import CheckConstraint, DateTime, Float, Foreig
+         -nKey, Integer, String, Text                                    
+       5 -from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_colu
+         -mn                                                             
+       4 +from sqlalchemy import (                                       
+       5 +    CheckConstraint,                                           
+       6 +    DateTime,                                                  
+       7 +    Float,                                                     
+       8 +    ForeignKey,                                                
+       9 +    Integer,                                                   
+      10 +    String,                                                    
+      11 +    Text,                                                      
+      12 +    UniqueConstraint,                                          
+      13 +)                                                              
+      14 +from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_colu
+         +mn, relationship                                               
+      15  
+      16  
+      17  class Base(DeclarativeBase):
+     ...
+      58          ),
+      59      )
+      60  
+      61 +    skip_reasons: Mapped[list["IngestionRunSkipReason"]] = rela
+         +tionship(                                                      
+      62 +        cascade="all, delete-orphan", lazy="selectin", order_by
+         +="IngestionRunSkipReason.reason"                               
+      63 +    )                                                          
+      64 +                                                               
+      65 +                                                               
+      66 +class IngestionRunSkipReason(Base):                            
+      67 +    """How many records of one run were skipped for one user-fa
+         +cing reason category.                                          
+      68 +                                                               
+      69 +    A separate table (rather than a new ingestion_runs column) 
+         +lets `flask init-db`                                           
+      70 +    add it to existing databases, since init-db only creates mi
+         +ssing tables.                                                  
+      71 +    """                                                        
+      72 +                                                               
+      73 +    __tablename__ = "ingestion_run_skip_reasons"               
+      74 +                                                               
+      75 +    id: Mapped[str] = mapped_column(String(36), primary_key=Tru
+         +e, default=lambda: str(uuid4()))                               
+      76 +    ingestion_run_id: Mapped[str] = mapped_column(             
+      77 +        ForeignKey("ingestion_runs.id", ondelete="CASCADE"), nu
+         +llable=False, index=True                                       
+      78 +    )                                                          
+     … 11 more lines (ctrl+o to expand)
+  ⎿  Updated backend\app\services\ingestion.py (+5 -0)
+      34              target_id=target_id,
+      35              source_kind=batch.source_kind,
+      36              message=message,
+      37 +            total_count=normalized.total_count,                
+      38 +            skipped_count=normalized.skipped_count,            
+      39 +            skip_reasons=normalized.skip_reasons,              
+      40          )
+      41          raise IngestionFailed(message)
+      42      run = persist_reviews(
+     ...
+      46          source_kind=batch.source_kind,
+      47          reviews=[asdict(review) for review in normalized.review
+          s],
+      48          skipped_count=normalized.skipped_count,
+      49 +        skip_reasons=normalized.skip_reasons,                  
+      50      )
+      51      return run
+      52  
+     ...
+       94          "run_status": run["status"],
+       95          "imported_count": run["imported_count"],
+       96          "skipped_count": run["skipped_count"],
+       97 +        "skip_reasons": run["skip_reasons"],                  
+       98      }
+       99  
+      100  
+  ⎿  Updated backend\app\services\review_storage.py (+29 -5)
+       4  from sqlalchemy.orm import Session
+       5  
+       6  from ..errors import NotFound
+       7 -from ..models import AnalysisTarget, IngestionRun, Review      
+       7 +from ..models import AnalysisTarget, IngestionRun, IngestionRun
+         +SkipReason, Review                                             
+       8  
+       9  
+      10  def _owned_target(session, *, target_id, owner_id):
+     ...
+      27          "total_count": run.total_count,
+      28          "imported_count": run.imported_count,
+      29          "skipped_count": run.skipped_count,
+      30 +        "skip_reasons": {item.reason: item.count for item in ru
+         +n.skip_reasons},                                               
+      31          "message": run.message,
+      32          "started_at": run.started_at.isoformat(),
+      33          "completed_at": run.completed_at.isoformat(),
+      34      }
+      35  
+      36  
+      36 -def persist_reviews(engine, *, owner_id, target_id, reviews, sk
+         -ipped_count, source_kind):                                     
+      37 +def _reason_rows(skip_reasons):                                
+      38 +    return [                                                   
+      39 +        IngestionRunSkipReason(reason=reason, count=count)     
+      40 +        for reason, count in sorted((skip_reasons or {}).items(
+         +))                                                             
+      41 +        if count > 0                                           
+      42 +    ]                                                          
+      43 +                                                               
+      44 +                                                               
+      45 +def persist_reviews(                                           
+      46 +    engine, *, owner_id, target_id, reviews, skipped_count, sou
+         +rce_kind, skip_reasons=None                                    
+      47 +):                                                             
+      48      """Commit run and normalized reviews as one transaction; ne
+          ver replace old reviews."""
+      49      if not reviews:
+      50          raise ValueError("No valid reviews to persist")
+     ...
+      81              imported_count=len(new_reviews),
+      82              skipped_count=skipped_count,
+      83              message=message,
+      84 +            skip_reasons=_reason_rows(skip_reasons),           
+      85          )
+      86          session.add(run)
+      87          session.flush()
+     … 32 more lines (ctrl+o to expand)
+
+● Now the backend tests. Let me look at the end-to-end test fixtures first.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/backend" && python - <<'EOF'
+      p='tests/test_review_normalization.py'…)
+  ⎿  Updated backend\tests\test_review_normalization.py (+39 -0)
+       58      assert result.total_count == 4
+       59      assert result.skipped_count == 2
+       60      assert [r.text for r in result.reviews] == ["Great", "Nois
+           y"]
+       61 +    assert result.skip_reasons == {"missing_text": 1, "invalid
+          +_rating": 1}                                                  
+       62 +                                                              
+       63 +                                                              
+       64 +@pytest.mark.parametrize(                                     
+       65 +    ("row", "reason"),                                        
+       66 +    [                                                         
+       67 +        ({"review_text": "", "rating": 5}, "missing_text"),   
+       68 +        ({"review_text": "   ", "rating": 5}, "missing_text"),
+       69 +        ({"rating": 5}, "missing_text"),                      
+       70 +        ({"review_text": "x" * 20001, "rating": 5}, "text_too_
+          +long"),                                                       
+       71 +        ({"review_text": "Good", "rating": None}, "invalid_rat
+          +ing"),                                                        
+       72 +        ({"review_text": "Good", "rating": 6}, "invalid_rating
+          +"),                                                           
+       73 +        ({"review_text": "Good", "rating": "five"}, "invalid_r
+          +ating"),                                                      
+       74 +        (None, "malformed_record"),                           
+       75 +        ("review_text,rating", "malformed_record"),           
+       76 +    ],                                                        
+       77 +)                                                             
+       78 +def test_skipped_record_gets_one_reason_category(row, reason):
+       79 +    assert classify_review(row) == (None, reason)             
+       80 +                                                              
+       81 +                                                              
+       82 +def test_skip_reason_counts_always_add_up_to_skipped_count(): 
+       83 +    result = normalize_reviews(                               
+       84 +        [                                                     
+       85 +            {"review_text": "Fine", "rating": 4},             
+       86 +            {"review_text": "", "rating": None},  # missing te
+          +xt wins; counted once                                         
+       87 +            {"review_text": "", "rating": 3},                 
+       88 +            {"review_text": "Bad rating", "rating": 0},       
+       89 +            None,                                             
+       90 +        ]                                                     
+       91 +    )                                                         
+       92 +    assert result.skipped_count == 4                          
+       93 +    assert result.skip_reasons == {"missing_text": 2, "invalid
+          +_rating": 1, "malformed_record": 1}                           
+       94 +    assert sum(result.skip_reasons.values()) == result.skipped
+          +_count                                                        
+       95 +                                                              
+       96 +                                                              
+       97 +def test_clean_batch_has_no_skip_reasons():                   
+     … 5 more lines (ctrl+o to expand)
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/backend" && python - <<'EOF'
+      p='tests/test_review_normalization.py'…)
+  ⎿  Updated backend\tests\test_ingestion_end_to_end.py (+43 -0)
+      39      assert response.status_code == 201
+      40      run = response.get_json()["run"]
+      41      assert (run["status"], run["imported_count"], run["skipped_
+          count"]) == ("partial", 2, 1)
+      42 +    assert run["skip_reasons"] == {"missing_text": 1}          
+      43      workspace = client.get(f"/api/targets/{target_id}", headers
+          =auth_header("user-a"))
+      44      assert workspace.get_json()["latest_ingestion"]["status"] =
+          = "partial"
+      45 +    assert workspace.get_json()["latest_ingestion"]["skip_reaso
+         +ns"] == {"missing_text": 1}                                    
+      46      reviews = client.get(f"/api/targets/{target_id}/reviews", h
+          eaders=auth_header("user-a"))
+      47      assert reviews.status_code == 200
+      48      assert sorted(x["text"] for x in reviews.get_json()["review
+          s"]) == ["Cold tea", "Good coffee"]
+     ...
+       58      assert reviews.get_json()["reviews"] == []
+       59  
+       60  
+       61 +def test_skipped_records_are_reported_and_never_enter_the_data
+          +set(client, auth_header):                                     
+       62 +    target_id = make_target(client, auth_header)              
+       63 +    response = upload(                                        
+       64 +        client,                                               
+       65 +        auth_header("user-a"),                                
+       66 +        target_id,                                            
+       67 +        b"review_text,rating                                  
+       68 +Good coffee,5                                                 
+       69 +,4                                                            
+       70 +No stars,                                                     
+       71 +Too many stars,9                                              
+       72 +",                                                            
+       73 +    )                                                         
+       74 +    assert response.status_code == 201                        
+       75 +    run = response.get_json()["run"]                          
+       76 +    assert (run["total_count"], run["imported_count"], run["sk
+          +ipped_count"]) == (4, 1, 3)                                   
+       77 +    assert run["skip_reasons"] == {"invalid_rating": 2, "missi
+          +ng_text": 1}                                                  
+       78 +    reviews = client.get(f"/api/targets/{target_id}/reviews", 
+          +headers=auth_header("user-a"))                                
+       79 +    assert [x["text"] for x in reviews.get_json()["reviews"]] 
+          +== ["Good coffee"]                                            
+       80 +    summary = client.get(f"/api/targets/{target_id}/summary", 
+          +headers=auth_header("user-a"))                                
+       81 +    if summary.status_code == 200:                            
+       82 +        assert summary.get_json()["summary"]["review_count"] =
+          += 1                                                           
+       83 +                                                              
+       84 +                                                              
+       85 +def test_fully_rejected_import_still_reports_what_was_rejected
+          +(client, auth_header):                                        
+       86 +    target_id = make_target(client, auth_header)              
+       87 +    response = upload(                                        
+     … 17 more lines (ctrl+o to expand)
+  ⎿  Updated backend\tests\test_review_normalization.py (+1 -1)
+      1  import pytest
+      2  
+      3 -from app.services.review_normalization import normalize_review, 
+        -normalize_reviews                                               
+      3 +from app.services.review_normalization import classify_review, n
+        +ormalize_review, normalize_reviews                              
+      4  
+      5  
+      6  def test_serpapi_review_normalization_preserves_metadata():
+  ⎿  Updated backend\tests\test_review_storage.py (+34 -0)
+       62          message="Provider failed",
+       63      )
+       64      assert run["status"] == "failed"
+       65 +    assert run["skip_reasons"] == {}                          
+       66      assert list_reviews(storage, owner_id="user-a", target_id=
+           "a") == []
+       67  
+       68  
+       69 +def test_skip_reasons_are_persisted_with_the_run(storage):    
+       70 +    run = persist_reviews(                                    
+       71 +        storage,                                              
+       72 +        owner_id="user-a",                                    
+       73 +        target_id="a",                                        
+       74 +        source_kind="google_maps_csv",                        
+       75 +        reviews=[{"text": "Great", "rating": 5.0}],           
+       76 +        skipped_count=3,                                      
+       77 +        skip_reasons={"missing_text": 2, "invalid_rating": 1},
+       78 +    )                                                         
+       79 +    assert run["skip_reasons"] == {"invalid_rating": 1, "missi
+          +ng_text": 2}                                                  
+       80 +    stored = latest_run(storage, owner_id="user-a", target_id=
+          +"a")                                                          
+       81 +    assert (stored["status"], stored["skipped_count"]) == ("pa
+          +rtial", 3)                                                    
+       82 +    assert stored["skip_reasons"] == {"invalid_rating": 1, "mi
+          +ssing_text": 2}                                               
+       83 +                                                              
+       84 +                                                              
+       85 +def test_failed_run_keeps_counts_of_rejected_records(storage):
+       86 +    run = record_failed_run(                                  
+       87 +        storage,                                              
+       88 +        owner_id="user-a",                                    
+       89 +        target_id="a",                                        
+       90 +        source_kind="google_maps_csv",                        
+       91 +        message="No usable written reviews with ratings from 1
+          + to 5 were found.",                                           
+       92 +        total_count=2,                                        
+       93 +        skipped_count=2,                                      
+       94 +        skip_reasons={"invalid_rating": 2},                   
+       95 +    )                                                         
+       96 +    stored = latest_run(storage, owner_id="user-a", target_id=
+          +"a")                                                          
+       97 +    assert stored == run                                      
+       98 +    assert (stored["total_count"], stored["imported_count"], s
+          +tored["skipped_count"]) == (2, 0, 2)                          
+       99 +    assert stored["skip_reasons"] == {"invalid_rating": 2}    
+      100 +                                                              
+      101 +                                                              
+     … 3 more lines (ctrl+o to expand)
+
+● The summary assertion I wrote is conditional, which is too weak. Let me check
+  the real response shape and assert on it directly.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+● The heredoc turned my \n escapes into real newlines. I'll fix those two byte
+  literals directly.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(backend\tests\test_ingestion_end_to_end.py)
+  ⎿  Added 1 line, removed 6 lines
+      64          client,
+      65          auth_header("user-a"),
+      66          target_id,
+      67 -        b"review_text,rating                                   
+      68 -Good coffee,5                                                  
+      69 -,4                                                             
+      70 -No stars,                                                      
+      71 -Too many stars,9                                               
+      72 -",                                                             
+      67 +        b"review_text,rating\nGood coffee,5\n,4\nNo stars,\nToo
+         + many stars,9\n",                                              
+      68      )
+      69      assert response.status_code == 201
+      70      run = response.get_json()["run"]
+
+● Update(backend\tests\test_ingestion_end_to_end.py)
+  ⎿  Added 1 line, removed 4 lines
+      81  def test_fully_rejected_import_still_reports_what_was_rejected(
+          client, auth_header):
+      82      target_id = make_target(client, auth_header)
+      83      response = upload(
+      84 -        client, auth_header("user-a"), target_id, b"review_text
+         -,rating                                                        
+      85 -,5                                                             
+      86 -No stars,0                                                     
+      87 -"                                                              
+      84 +        client, auth_header("user-a"), target_id, b"review_text
+         +,rating\n,5\nNo stars,0\n"                                     
+      85      )
+      86      assert response.status_code == 422
+      87      latest = client.get(f"/api/targets/{target_id}", headers=au
+          th_header("user-a")).get_json()[
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The only failing test is my own whole-dict equality check, since SQLite drops
+  the timezone on round-trip; that's a known SQLite quirk rather than a bug in
+  the change, so I'm removing that one comparison.
+
+● Update(backend\tests\test_review_storage.py)  ⎿  Added 1 line, removed 1 line
+       93          skipped_count=2,
+       94          skip_reasons={"invalid_rating": 2},
+       95      )
+       96 +    assert run["skip_reasons"] == {"invalid_rating": 2}       
+       97      stored = latest_run(storage, owner_id="user-a", target_id=
+           "a")
+       97 -    assert stored == run                                      
+       98      assert (stored["total_count"], stored["imported_count"], s
+           tored["skipped_count"]) == (2, 0, 2)
+       99      assert stored["skip_reasons"] == {"invalid_rating": 2}
+      100  
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Backend is green: 317 passed, lint and format clean. Now the frontend. I'll
+  put the reason labels in one shared helper so the status box and both
+  import/ingest messages say the same thing.
+
+● Write(frontend\src\lib\skipReasons.ts)
+  ⎿  Wrote 43 lines to frontend\src\lib\skipReasons.ts
+      1 // User-facing wording for the reason categories the backend reco
+        rds when it skips
+      2 // a review record. Raw parser diagnostics are never shown, only
+        these categories.
+      3 const LABELS: Record<string, string> = {
+      4   missing_text: 'missing review text',
+      5   text_too_long: 'review text too long',
+      6   invalid_rating: 'missing or invalid rating',
+      7   malformed_record: 'malformed source record',
+      8 }
+     … +35 lines (ctrl+o to expand)
+
+● Now wire it into the status box and the two inline result messages:
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend" && python - <<'EOF'
+      import re…)
+  ⎿  Updated frontend\src\api\targets.ts (+3 -0)
+       98    total_count?: number
+       99    imported_count?: number
+      100    skipped_count?: number
+      101 +  // Per-category counts of skipped records, e.g. { missing_te
+          +xt: 2 }.                                                      
+      102 +  skip_reasons?: Record<string, number>                       
+      103    message?: string | null
+      104    completed_at?: string
+      105  }
+     ...
+      164    run_status?: 'succeeded' | 'partial' | 'failed'
+      165    imported_count?: number
+      166    skipped_count?: number
+      167 +  skip_reasons?: Record<string, number>                       
+      168  }
+      169  
+      170  const INGEST_MESSAGES: Record<number, string> = {
+  ⎿  Updated frontend\src\components\IngestionStatus.tsx (+5 -6)
+      1  import type { IngestionState } from '../api/targets'
+      2 +import { skippedSentence } from '../lib/skipReasons'            
+      3  
+      4  type Props = { ingestion: IngestionState | null }
+      5  
+     ...
+      35    const imported = count(ingestion.imported_count)
+      36    const skipped = count(ingestion.skipped_count)
+      37    const total = count(ingestion.total_count)
+      38 +  // Records the backend rejected are never part of the dataset
+         +; say so explicitly.                                           
+      39 +  const skippedNote = skippedSentence(skipped, ingestion.skip_r
+         +easons, total)                                                 
+      40    if (ingestion.status === 'failed') {
+      41      // The backend only stores safe, user-facing failure messag
+          es.
+      42      const reason = ingestion.message?.trim()
+      40 -    return `${reason ? `${reason} ` : ''}No reviews were added 
+         -by this attempt.`                                              
+      43 +    return [reason, skippedNote, 'No reviews were added by this
+         + attempt.'].filter(Boolean).join(' ')                          
+      44    }
+      45    if (imported === null) return null
+      46    // imported_count excludes reviews that were already saved by
+           an earlier run.
+      47    const added = `Added ${plural(imported, 'new review')}.`
+      45 -  if (ingestion.status === 'partial' && skipped !== null) {    
+      46 -    const of = total !== null ? ` of ${total}` : ''            
+      47 -    return `${added} ${skipped}${of} records couldn't be used a
+         -nd were skipped.`                                              
+      48 -  }                                                            
+      49 -  return added                                                 
+      48 +  return skippedNote ? `${added} ${skippedNote}` : added       
+      49  }
+      50  
+      51  function completedAt(value: unknown) {
+  ⎿  Updated frontend\src\components\ReviewCsvImport.tsx (+4 -3)
+      1  import { useState } from 'react'
+      2  import type { FormEvent } from 'react'
+      3 +import { skippedSentence } from '../lib/skipReasons'            
+      4  
+      5  // onFinished runs after any attempt the server answered, so the
+          workspace can reload the
+      6  // persisted ingestion status (failed imports are recorded as fa
+         iled runs too).
+     ...
+       9    status: string
+      10    imported_count: number
+      11    skipped_count: number
+      12 +  skip_reasons?: Record<string, number>                        
+      13  }
+      14  
+      15  export default function ReviewCsvImport({ accessToken, targetId
+          , onFinished }: Props) {
+     ...
+      60        }
+      61        const data: { run: ImportRun } = await response.json()
+      62        setPartial(data.run.status === 'partial')
+      61 -      setSummary(                                              
+      62 -        `Imported ${data.run.imported_count} reviews (${data.ru
+         -n.skipped_count} skipped). Status: ${data.run.status}.`,       
+      63 -      )                                                        
+      63 +      const skipped = skippedSentence(data.run.skipped_count, d
+         +ata.run.skip_reasons)                                          
+      64 +      setSummary(`Imported ${data.run.imported_count} reviews.$
+         +{skipped ? ` ${skipped}` : ''}`)                               
+      65        form.reset()
+      66        onFinished()
+      67      } catch {
+  ⎿  Updated frontend\src\pages\TargetWorkspace.tsx (+6 -1)
+      56          targetId,
+      57          state: response.run_status === 'partial' ? 'partial' : 
+          'accepted',
+      58          message: response.run_status
+      59 -          ? `Imported ${response.imported_count} reviews (${res
+         -ponse.skipped_count} skipped).`                                
+      59 +          ? [                                                  
+      60 +              `Imported ${response.imported_count} reviews.`,  
+      61 +              skippedSentence(response.skipped_count, response.
+         +skip_reasons),                                                 
+      62 +            ]                                                  
+      63 +              .filter(Boolean)                                 
+      64 +              .join(' ')                                       
+      65            : 'Ingestion started for this target.',
+      66        })
+      67        if (response.run_status) setAttempt((n) => n + 1)
+
+● I still need to add the import in TargetWorkspace and update the four existing
+  assertions that matched the old wording.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend" && sed -n 112,122p src/pages/TargetWorkspace.test.tsx &&
+      python - <<'EOF…)
+  ⎿  Updated frontend\src\components\ReviewCsvImport.test.tsx (+10 -3)
+      28      const run = { status: 'succeeded', imported_count: 2, skipp
+          ed_count: 0 }
+      29      const onFinished = await upload(201, { run })
+      30      const notice = await screen.findByRole('status')
+      31 -    expect(notice.textContent).toContain('Imported 2 reviews (0
+         - skipped)')                                                    
+      31 +    expect(notice.textContent).toBe('Imported 2 reviews.')     
+      32      expect(notice.className).toContain('text-green-800')
+      33      expect(onFinished).toHaveBeenCalledOnce()
+      34    })
+      35  
+      36    it('shows a partial import in amber', async () => {
+      37 -    const run = { status: 'partial', imported_count: 2, skipped
+         -_count: 1 }                                                    
+      37 +    const run = {                                              
+      38 +      status: 'partial',                                       
+      39 +      imported_count: 2,                                       
+      40 +      skipped_count: 1,                                        
+      41 +      skip_reasons: { invalid_rating: 1 },                     
+      42 +    }                                                          
+      43      await upload(201, { run })
+      44      const notice = await screen.findByRole('status')
+      40 -    expect(notice.textContent).toContain('(1 skipped)')        
+      45 +    expect(notice.textContent).toBe(                           
+      46 +      'Imported 2 reviews. 1 record was skipped (1 missing or i
+         +nvalid rating) and not included in the review dataset.',       
+      47 +    )                                                          
+      48      expect(notice.className).toContain('text-amber-900')
+      49    })
+      50  
+  ⎿  Updated frontend\src\pages\TargetWorkspace.test.tsx (+4 -2)
+      49  
+      50    it.each([
+      51      ['succeeded', 'Last ingestion succeeded', 'Added 4 new revi
+          ews.'],
+      52 -    ['partial', 'Last ingestion partially succeeded', "4 of 5 r
+         -ecords couldn't be used"],                                     
+      52 +    ['partial', 'Last ingestion partially succeeded', '4 of 5 r
+         +ecords were skipped'],                                         
+      53      ['failed', 'Last ingestion failed', 'The source did not res
+          pond.'],
+      54    ])('shows a persisted %s run from the workspace response', as
+          ync (status, label, detail) => {
+      55      const run = {
+     ...
+      132      vi.stubGlobal('fetch', fetchMock)
+      133      render(<TargetWorkspace accessToken="tok" targetId="t1" on
+           Back={() => {}} />)
+      134      await userEvent.click(await screen.findByRole('button', { 
+           name: 'Start ingestion' }))
+      135 -    const notice = await screen.findByText('Imported 3 reviews
+          - (2 skipped).')                                               
+      135 +    const notice = await screen.findByText(                   
+      136 +      'Imported 3 reviews. 2 records were skipped (2 missing r
+          +eview text) and not included in the review dataset.',         
+      137 +    )                                                         
+      138      expect(notice.className).toContain('bg-amber-50')
+      139    })
+      140  
+  ⎿  Updated frontend\src\pages\TargetWorkspace.tsx (+1 -0)
+       6  import ReviewSummary from '../components/ReviewSummary'
+       7  import { getTarget, PLATFORM, startIngestion, TargetError } fro
+          m '../api/targets'
+       8  import type { TargetWorkspace as Workspace } from '../api/targe
+          ts'
+       9 +import { skippedSentence } from '../lib/skipReasons'           
+      10  
+      11  type Props = { accessToken: string; targetId: string; onBack: (
+          ) => void }
+      12  type Result = { key: string; targetId: string; target: Workspac
+          e | null; error: string }
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict/frontend" && python - <<'EOF'
+      p='src/pages/TargetWorkspace.test.tsx'…)
+  ⎿  Updated frontend\src\components\IngestionStatus.test.tsx (+47 -1)
+      38      const { container } = render(<IngestionStatus ingestion={ru
+          n} />)
+      39      const { box, text } = shown(container)
+      40      expect(text).toContain('Last ingestion partially succeeded'
+          )
+      41 -    expect(text).toContain("Added 3 new reviews. 2 of 5 records
+         - couldn't be used and were skipped.")                          
+      41 +    expect(text).toContain(                                    
+      42 +      'Added 3 new reviews. 2 of 5 records were skipped and not
+         + included in the review dataset.',                             
+      43 +    )                                                          
+      44      expect(box.className).toContain('bg-amber-50')
+      45    })
+      46  
+     ...
+      107      expect(text).toContain('Last ingestion: queued')
+      108      expect(box.className).toContain('bg-slate-50')
+      109    })
+      110 +                                                              
+      111 +  it('breaks skipped records down by reason category', () => {
+      112 +    const run = {                                             
+      113 +      ...RUN,                                                 
+      114 +      status: 'partial',                                      
+      115 +      imported_count: 2,                                      
+      116 +      skipped_count: 3,                                       
+      117 +      skip_reasons: { invalid_rating: 1, missing_text: 2 },   
+      118 +    }                                                         
+      119 +    const { text } = shown(render(<IngestionStatus ingestion={
+          +run} />).container)                                           
+      120 +    expect(text).toContain(                                   
+      121 +      '3 of 5 records were skipped (2 missing review text, 1 m
+          +issing or invalid rating) ' +                                 
+      122 +        'and not included in the review dataset.',            
+      123 +    )                                                         
+      124 +  })                                                          
+      125 +                                                              
+      126 +  it('still reports how many records were rejected when a run 
+          +fails outright', () => {                                      
+      127 +    const run = {                                             
+      128 +      ...RUN,                                                 
+      129 +      status: 'failed',                                       
+      130 +      total_count: 2,                                         
+      131 +      imported_count: 0,                                      
+      132 +      skipped_count: 2,                                       
+      133 +      skip_reasons: { malformed_record: 1, text_too_long: 1 },
+      134 +      message: 'No usable written reviews with ratings from 1 
+          +to 5 were found.',                                            
+      135 +    }                                                         
+      136 +    const { text } = shown(render(<IngestionStatus ingestion={
+          +run} />).container)                                           
+     … 18 more lines (ctrl+o to expand)
+  ⎿  Updated frontend\src\pages\TargetWorkspace.test.tsx (+1 -0)
+      119        run_status: 'partial',
+      120        imported_count: 3,
+      121        skipped_count: 2,
+      122 +      skip_reasons: { missing_text: 2 },                      
+      123      }
+      124      const fetchMock = vi.fn((url: string, init?: RequestInit) 
+           =>
+      125        Promise.resolve(
+
+● The test caught an awkward phrase, "1 of 5 record was". With a total it should
+  say "records". Fixing the helper:
+
+● Update(frontend\src\lib\skipReasons.ts)
+  ⎿  Added 6 lines, removed 3 lines
+      33  // One sentence about skipped records for a run summary, or '' 
+          when none were skipped.
+      34  export function skippedSentence(skipped: unknown, reasons: unkn
+          own, total?: unknown): string {
+      35    if (!validCount(skipped)) return ''
+      36 -  const of = validCount(total) ? ` of ${total}` : ''           
+      37 -  const noun = skipped === 1 ? 'record was' : 'records were'   
+      36 +  // "1 record was", "2 records were", "1 of 5 records was".   
+      37 +  const subject = validCount(total)                            
+      38 +    ? `${skipped} of ${total} records`                         
+      39 +    : `${skipped} record${skipped === 1 ? '' : 's'}`           
+      40 +  const verb = skipped === 1 ? 'was' : 'were'                  
+      41    const detail = describeSkipReasons(reasons)
+      42    return (
+      40 -    `${skipped}${of} ${noun} skipped${detail ? ` (${detail})` :
+         - ''} ` +                                                       
+      43 +    `${subject} ${verb} skipped${detail ? ` (${detail})` : ''} 
+         +` +                                                            
+      44      'and not included in the review dataset.'
+      45    )
+      46  }
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● All 89 frontend tests, typecheck, eslint and prettier pass. The shared
+  Supabase DB needs flask init-db re-run for the new table, and I'm adding that
+  to the docs next.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Bash(cd "C:/Users/bdorf/VsCode/NJITSenSem1/CS490/CS490-Project-Team-Merge-Conf
+      lict" && python - <<'EOF'
+      p='docs/review-ingestion-source.md'…)
+  ⎿  Updated README.md (+3 -1)
+      54  4. The workspace shows the saved result of the last ingestion: 
+          succeeded (green), partially
+      55     succeeded with some records skipped (amber), or failed with 
+          the reason (red). It includes
+      56     how many new reviews were added and when the run finished, a
+          nd it reloads after every
+      57 -   attempt, including failed ones.                             
+      57 +   attempt, including failed ones. When records are skipped, it
+         + shows how many and why (for                                   
+      58 +   example "2 missing review text, 1 missing or invalid rating"
+         +) and states that they are not                                 
+      59 +   part of the review dataset.                                 
+      60  5. Once reviews are saved, the workspace shows a review summary
+          : how many reviews were
+      61     ingested, the average rating, and how many reviews have each
+           star rating.
+      62  
+  ⎿  Updated docs\review-ingestion-source.md (+14 -0)
+       7  
+       8  The backend does not fabricate records. Each successful Review 
+          contains written text and a 1–5 rating. Invalid individual reco
+          rds are skipped; an import that contains some valid and some in
+          valid records is marked `partial`. A completely unusable file i
+          s `failed`. Counts and latest run state come from persisted dat
+          abase records, not Gemini or hardcoded values. Prior valid revi
+          ews are not erased if another ingestion fails.
+       9  
+      10 +### Skipped and rejected records (S2-007)                      
+      11 +                                                               
+      12 +Each skipped record is assigned exactly one user-facing reason 
+         +category. Raw parser diagnostics are never exposed:            
+      13 +                                                               
+      14 +| Category | Meaning |                                         
+      15 +| --- | --- |                                                  
+      16 +| `missing_text` | No written review text (blank or absent). | 
+      17 +| `text_too_long` | Review text longer than 20,000 characters. 
+         +|                                                              
+      18 +| `invalid_rating` | Rating missing, non-numeric, or outside 1–
+         +5. |                                                           
+      19 +| `malformed_record` | The source record is not a usable object
+         +/row. |                                                        
+      20 +                                                               
+      21 +Per-category counts are stored in `ingestion_run_skip_reasons` 
+         +and returned on every run as `skip_reasons`, e.g. `{"missing_te
+         +xt": 2, "invalid_rating": 1}`. They always sum to `skipped_coun
+         +t`. A run where every record was rejected is `failed`, but it s
+         +till keeps its `total_count`, `skipped_count`, and `skip_reason
+         +s`. The workspace shows the breakdown and states that skipped r
+         +ecords are not included in the review dataset. Skipped records 
+         +are never persisted, so they are never counted by the summary o
+         +r used by Q&A.                                                 
+      22 +                                                               
+      23  ## Security / deployment
+      24  
+      25  - Only the verified Supabase JWT `sub` determines the owner. Th
+          e backend checks ownership before external fetch or reading CSV
+           contents. Authenticated non-owners receive 404, not target dat
+          a.
+     ...
+      28  - CSV file limit: 2 MB and 5,000 rows. API request maximum: 3 M
+          B. Ingestion occurs synchronously for this Sprint 1 baseline.
+      29  - This Sprint 1 implementation does not deduplicate repeat inge
+          stions. Use one import per target for the class demo.
+      30  - `flask --app app init-db` creates missing tables. It is **not
+          ** a production migration mechanism; do not use it to revise ex
+          isting tables.
+      31 +- After pulling S2-007, re-run `flask --app app init-db` once a
+         +gainst each existing database. It adds the new `ingestion_run_s
+         +kip_reasons` table (with RLS enabled); without that table, read
+         +ing ingestion runs fails.                                      
+      32  - Example fixture files in automated tests are synthetic **test
+           fixtures**, not actual customer review evidence for a demo. Us
+          e genuine supplied reviews for the demo.
+      33  
+      34  ## Acceptance test order
+
+● I've implemented S2-007 on a new branch,
+  feature/S2-007-report-skipped-records, cut from origin/main because S2-005 was
+  already merged as #85. Nothing is committed yet. Backend tests (317),
+  frontend tests (89), ruff, tsc, eslint and prettier all pass.
+
+  What the user sees now
+
+  When some records are dropped, the workspace status box says something like:
+
+  ▎ Added 3 new reviews. 2 of 5 records were skipped (1 missing review text, 1
+  ▎ missing or invalid rating) and not included in the review dataset.
+
+  The inline messages after Start ingestion and Import CSV reviews use the same
+  wording.
+
+  How it works
+  - Reasons: review_normalization.py
+    (backend/app/services/review_normalization.py) gives each rejected record
+    exactly one reason: missing_text, text_too_long, invalid_rating or
+    malformed_record. The per-reason counts always add up to skipped_count, and
+    raw parser errors are never shown to the user.
+  - Storage: the counts go in a new ingestion_run_skip_reasons table (see
+    models.py (backend/app/models.py)) and come back on every run as
+    skip_reasons. I used a new table instead of a new column because init-db
+    only creates missing tables and never alters existing ones.
+  - Fixed an existing gap: if every row was bad, the failed run used to be saved
+    with total=0, skipped=0, so the user couldn't tell anything had been
+    rejected. It now keeps the real counts and reasons.
+  - Frontend: the reason wording lives in one helper, skipReasons.ts
+    (frontend/src/lib/skipReasons.ts). It ignores malformed reason data rather
+    than displaying it.
+  - Tests: an end-to-end test checks that skipped rows don't count toward the
+    summary's review count or average rating. Other tests cover the reason
+    categories, storage of the counts, runs where everything was rejected, and
+    the new wording. I updated four existing frontend assertions that matched
+    the old text.
+  - Docs: review-ingestion-source.md (docs/review-ingestion-source.md) has a
+    table of the reason categories, and the README describes the new message.
+
+  Before deploying: run flask --app app init-db once against the shared Supabase
+  database to create the new table. Until then, loading the workspace would
+  fail because the table is missing. This step is in the docs.
+
+  Shall I commit and open the PR?
+
+> Test S2-007. If all fine, push
+
+● I'll rerun the same checks CI runs, then commit and push.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● CI also enforces coverage on changed lines (80% backend, 70% frontend) and
+  runs a production build, so I'll run those too.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Everything passes. Frontend diff-coverage only counted tracked files, so the
+  new skipReasons.ts wasn't included yet. I'll commit, then re-check coverage
+  with it in the diff before pushing.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● With the new file included, frontend diff coverage is still 100%. Pushing:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● S2-007 passed every check our CI runs, so I committed it as 18b1982 and pushed
+  feature/S2-007-report-skipped-records to origin.
+
+  Backend:
+  - Lint and format checks pass.
+  - All 317 tests pass.
+  - Test coverage on the changed lines is 100%; CI requires 80%.
+
+  Frontend:
+  - Lint and format checks pass.
+  - All 89 tests pass.
+  - Coverage on the changed lines is 100%, including the new skipReasons.ts; CI
+    requires 70%.
+  - The production build succeeds.
+
+  I haven't opened a PR. You can open one at https://github.com/bdorf04NJIT/CS49
+  0-Project-Team-Merge-Conflict/pull/new/feature/S2-007-report-skipped-records,
+  or I can open it for you.
+
+  Before this is deployed, someone needs to run flask --app app init-db once
+  against the Supabase database. That creates the new ingestion_run_skip_reasons
+  table, and without it the workspace will fail to load ingestion results. It's
+  worth putting in the PR description so the team sees it.

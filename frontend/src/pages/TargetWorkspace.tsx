@@ -7,6 +7,7 @@ import ReviewSummary from '../components/ReviewSummary'
 import TargetSwitcher from '../components/TargetSwitcher'
 import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
 import type { TargetWorkspace as Workspace } from '../api/targets'
+import { skippedSentence } from '../lib/skipReasons'
 
 type Props = {
   accessToken: string
@@ -75,7 +76,12 @@ export default function TargetWorkspace({ accessToken, targetId, onBack, onSwitc
         targetId,
         state: response.run_status === 'partial' ? 'partial' : 'accepted',
         message: response.run_status
-          ? `Imported ${response.imported_count} reviews (${response.skipped_count} skipped).`
+          ? [
+              `Imported ${response.imported_count} reviews.`,
+              skippedSentence(response.skipped_count, response.skip_reasons),
+            ]
+              .filter(Boolean)
+              .join(' ')
           : 'Ingestion started for this target.',
       })
       if (response.run_status) setAttempt((n) => n + 1)
