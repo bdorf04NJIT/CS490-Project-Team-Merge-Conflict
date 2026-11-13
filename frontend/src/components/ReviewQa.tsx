@@ -104,6 +104,13 @@ export default function ReviewQa({ accessToken, targetId, targetName }: Props) {
               Not covered by these reviews
             </p>
           )}
+          {/* S2-015: a scope refusal (another business, another platform, or unrelated
+              to these reviews) must not read like an analysis of the reviews. */}
+          {answer.status === 'out_of_scope' && (
+            <p className="mt-2 inline-block rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
+              Outside the scope of these reviews
+            </p>
+          )}
           <p role="status" className="mt-2 leading-6 whitespace-pre-wrap text-slate-900">
             {answer.answer}
           </p>
