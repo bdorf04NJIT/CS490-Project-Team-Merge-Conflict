@@ -24,6 +24,8 @@ afterEach(() => {
 test.each([
   "What are Joe's Coffee's Yelp reviews like?",
   'Is the bakery across the street any good?',
+  // S2-014: a general-knowledge refusal gets the same label.
+  'What is the weather today?',
 ])('labels a refusal for %s and shows no evidence', async (question) => {
   const body = {
     status: 'out_of_scope',

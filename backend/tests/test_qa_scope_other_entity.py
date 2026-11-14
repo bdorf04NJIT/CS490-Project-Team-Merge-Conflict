@@ -151,7 +151,8 @@ def test_prompt_states_the_other_entity_and_platform_rules(prompt, text):
 
 
 def test_prompt_version_was_bumped_for_the_new_wording():
-    assert PROMPT_VERSION == "4"
+    # S2-015 introduced version 4; later stories may bump it further.
+    assert int(PROMPT_VERSION) >= 4
 
 
 # --- 2. The evaluation set itself --------------------------------------------------------
