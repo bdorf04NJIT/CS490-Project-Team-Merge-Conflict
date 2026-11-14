@@ -79,8 +79,8 @@ function questionCalls() {
 test('the workspace identifies the active target in the heading, tab title, summary and Q&A', async () => {
   renderHome()
   const heading = await screen.findByRole('heading', { name: 'Battery Barn' })
-  expect(document.title).toBe('Battery Barn | ReviewLens AI')
-  expect(document.activeElement).toBe(heading)
+  await waitFor(() => expect(document.title).toBe('Battery Barn | ReviewLens AI'))
+  await waitFor(() => expect(document.activeElement).toBe(heading))
 
   const summary = (await screen.findByText('Reviews ingested')).closest('section')!
   expect(within(summary).getByText('For Battery Barn')).toBeTruthy()
@@ -101,7 +101,7 @@ test('switching moves every panel, and the next question, to the new target', as
 
   const heading = await screen.findByRole('heading', { name: 'Service Shack' })
   expect(window.location.pathname).toBe('/targets/b')
-  expect(document.title).toBe('Service Shack | ReviewLens AI')
+  await waitFor(() => expect(document.title).toBe('Service Shack | ReviewLens AI'))
   await waitFor(() => expect(document.activeElement).toBe(heading))
   expect((screen.getByLabelText('Switch target') as HTMLSelectElement).value).toBe('b')
 
@@ -127,7 +127,7 @@ test('browser Back returns to the previous target', async () => {
 
   window.history.back()
   expect(await screen.findByRole('heading', { name: 'Battery Barn' })).toBeTruthy()
-  expect(document.title).toBe('Battery Barn | ReviewLens AI')
+  await waitFor(() => expect(document.title).toBe('Battery Barn | ReviewLens AI'))
 })
 
 test("the switcher cannot open another user's target: a foreign id is still denied", async () => {
