@@ -66,7 +66,7 @@ function renderHome() {
 }
 
 async function ask(question: string) {
-  await userEvent.type(screen.getByLabelText('Your question'), question)
+  await userEvent.type(await screen.findByLabelText('Your question'), question)
   await userEvent.click(screen.getByRole('button', { name: 'Ask' }))
 }
 
@@ -86,7 +86,7 @@ test('the workspace identifies the active target in the heading, tab title, summ
   expect(within(summary).getByText('For Battery Barn')).toBeTruthy()
   expect(within(summary).getByText('20')).toBeTruthy()
 
-  const qa = screen.getByRole('region', { name: 'Ask about these reviews' })
+  const qa = await screen.findByRole('region', { name: 'Ask about these reviews' })
   expect(within(qa).getByText('Battery Barn')).toBeTruthy()
 })
 
@@ -111,7 +111,7 @@ test('switching moves every panel, and the next question, to the new target', as
 
   expect(screen.queryByText('Reviewers praise the battery life.')).toBeNull()
   expect((screen.getByLabelText('Your question') as HTMLTextAreaElement).value).toBe('')
-  const qa = screen.getByRole('region', { name: 'Ask about these reviews' })
+  const qa = await screen.findByRole('region', { name: 'Ask about these reviews' })
   expect(within(qa).getByText('Service Shack')).toBeTruthy()
 
   await ask('What do people complain about?')
