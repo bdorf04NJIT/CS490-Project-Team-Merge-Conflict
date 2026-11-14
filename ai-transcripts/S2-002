@@ -1,0 +1,2378 @@
+Help me implement this ticket, and explain changes
+Outcome:
+The project contains automated integration tests covering important Sprint 2 boundaries between application services, persistence, ingestion data, and Q&A orchestration.
+
+Technical Guidance:
+
+Integration tests should focus on boundaries where independently correct components could still fail when combined.
+
+Representative areas include:
+
+    Loading persisted reviews for an AnalysisTarget.
+    Computing an ingestion summary from persisted data.
+    Passing the correct review dataset into the Q&A service.
+    Applying authenticated ownership before review retrieval.
+    Changing the active target and retrieving different data.
+
+The exact testing technology is the team's decision.
+
+Rules: S2-BR-001 through S2-BR-014, S2-BR-022 through S2-BR-030
+Show more
+2:04 PM
+I'll start by exploring the project structure and existing tests.
+
+
+
+Bash List repo files and docs
+IN
+ls && cat CLAUDE.md 2>/dev/null | head -50 && git ls-files | grep -v node_modules | head -200
+
+OUT
+ai-transcripts
+backend
+docs
+frontend
+README.md
+Sprint1Issues.csv
+Sprint2Issues.csv
+.github/workflows/ci.yml
+.github/workflows/import-sprint-issues.yml
+.gitignore
+.vscode/settings.json
+README.md
+Sprint1Issues.csv
+Sprint2Issues.csv
+ai-transcripts/S1-006/2026-11-01-claude-code-iverson.md
+ai-transcripts/S1-007/2026-11-01-claude-code-iverson.md
+ai-transcripts/S1-012/2026-11-03-claude-code-connor.md
+ai-transcripts/S1-013/2026-11-03-claude-code-connor.md
+ai-transcripts/S1-018/2026-11-02-claude-code-bdorf.md
+ai-transcripts/S1-019/2026-11-02-claude-code-bdorf.md
+ai-transcripts/S2-005/2026-11-06-144848-should-i-take-on-005-or-007-next.txt
+ai-transcripts/S2-006/2026-11-05-214856-local-command-caveatthe-command-below-was-run-d.txt
+ai-transcripts/S2-008/2026-11-04-112735-summarize-the-changes-made-for-s2-008.txt
+ai-transcripts/S2-013/2026-11-06-claude-code-iverson.md
+ai-transcripts/fix-auth-refocus-reload/2026-11-09-claude-code-iverson.md
+backend/.coveragerc
+backend/.env.example
+backend/.gitignore
+backend/README.md
+backend/app/__init__.py
+backend/app/adapters/gemini_source.py
+backend/app/adapters/review_source.py
+backend/app/adapters/review_source_csv.py
+backend/app/adapters/serpapi_key_pool.py
+backend/app/adapters/serpapi_source.py
+backend/app/adapters/short_maps_links.py
+backend/app/adapters/supabase_auth.py
+backend/app/auth.py
+backend/app/database.py
+backend/app/errors.py
+backend/app/models.py
+backend/app/routes.py
+backend/app/services/ingestion.py
+backend/app/services/qa_prompt.py
+backend/app/services/review_normalization.py
+backend/app/services/review_qa.py
+backend/app/services/review_storage.py
+backend/app/services/review_summary.py
+backend/app/services/targets.py
+backend/pytest.ini
+backend/requirements.txt
+backend/ruff.toml
+backend/tests/conftest.py
+backend/tests/scope_eval/other_entity_or_platform.json
+backend/tests/test_auth.py
+backend/tests/test_config.py
+backend/tests/test_cross_user_authorization.py
+backend/tests/test_database_config.py
+backend/tests/test_gemini_fallback.py
+backend/tests/test_ingestion_end_to_end.py
+backend/tests/test_ingestion_submit.py
+backend/tests/test_qa_cross_user_isolation.py
+backend/tests/test_qa_prompt.py
+backend/tests/test_qa_scope_other_entity.py
+backend/tests/test_review_authorization.py
+backend/tests/test_review_normalization.py
+backend/tests/test_review_qa.py
+backend/tests/test_review_source_import.py
+backend/tests/test_review_storage.py
+backend/tests/test_review_summary.py
+backend/tests/test_serpapi_key_rotation.py
+backend/tests/test_short_maps_ingestion.py
+backend/tests/test_short_maps_links.py
+backend/tests/test_target_listing.py
+backend/tests/test_target_model.py
+backend/tests/test_target_ownership.py
+backend/tests/test_target_validation.py
+backend/tests/test_target_workspace.py
+docs/ai-assisted-development.md
+docs/coding-standards.md
+docs/data-and-security-guardrails.md
+docs/local-env-setup-guide.md
+docs/review-ingestion-source.md
+docs/serpapi-key-management.md
+docs/ui-ux-context.md
+frontend/.env.example
+frontend/.gitignore
+frontend/.prettierignore
+frontend/.prettierrc.json
+frontend/README.md
+frontend/eslint.config.js
+frontend/index.html
+frontend/package-lock.json
+frontend/package.json
+frontend/public/favicon.svg
+frontend/public/icons.svg
+frontend/src/App.test.tsx
+frontend/src/App.tsx
+frontend/src/api/targets.ts
+frontend/src/assets/hero.png
+frontend/src/assets/react.svg
+frontend/src/assets/vite.svg
+frontend/src/components/CreateTargetForm.test.tsx
+frontend/src/components/CreateTargetForm.tsx
+frontend/src/components/IngestionStatus.test.tsx
+frontend/src/components/IngestionStatus.tsx
+frontend/src/components/ReviewCsvImport.test.tsx
+frontend/src/components/ReviewCsvImport.tsx
+frontend/src/components/ReviewList.test.tsx
+frontend/src/components/ReviewList.tsx
+frontend/src/components/ReviewQa.test.tsx
+frontend/src/components/ReviewQa.tsx
+frontend/src/components/ReviewQaScope.test.tsx
+frontend/src/components/ReviewSummary.test.tsx
+frontend/src/components/ReviewSummary.tsx
+frontend/src/components/TargetList.test.tsx
+frontend/src/components/TargetList.tsx
+frontend/src/components/TargetSwitcher.test.tsx
+frontend/src/components/TargetSwitcher.tsx
+frontend/src/hooks/usePath.ts
+frontend/src/index.css
+frontend/src/lib/supabase.test.ts
+frontend/src/lib/supabase.ts
+frontend/src/main.tsx
+frontend/src/pages/Home.tsx
+frontend/src/pages/TargetSwitching.test.tsx
+frontend/src/pages/TargetWorkspace.test.tsx
+frontend/src/pages/TargetWorkspace.tsx
+frontend/tsconfig.app.json
+frontend/tsconfig.json
+frontend/tsconfig.node.json
+frontend/vite.config.ts
+Bash Look at sprint issues and standards
+IN
+grep -n "S2-0" Sprint2Issues.csv | cut -c1-400 | head -60; cat docs/coding-standards.md docs/ai-assisted-development.md | head -150
+
+OUT
+2:S2-001,S2-001 - Add Changed-Code Coverage Gate,"**Outcome:**
+21:S2-002,S2-002 - Add Critical Integration Test Coverage,"**Outcome:**
+39:S2-003,S2-003 - Create Deterministic Q&A Test Harness,"**Outcome:**
+65:S2-004,S2-004 - Create Scope-Guard Evaluation Set,"**Outcome:**
+85:S2-005,S2-005 - Display Ingestion Result Status,"**Outcome:**
+102:S2-006,S2-006 - Display Review Count and Rating Summary,"**Outcome:**
+125:S2-007,S2-007 - Report Skipped or Rejected Review Records,"**Outcome:**
+149:S2-008,S2-008 - Derive Summary from the Active Persisted Dataset,"**Outcome:**
+166:S2-009,S2-009 - Build the Review Q&A Interface,"**Outcome:**
+186:S2-010,S2-010 - Build Review Dataset Context for Q&A,"**Outcome:**
+214:S2-011,S2-011 - Answer Questions from Review Evidence,"**Outcome:**
+234:S2-012,S2-012 - Handle Questions with Insufficient Review Evidence,"**Outcome:**
+255:S2-013,S2-013 - Define and Apply the ReviewLens System Prompt,"**Outcome:**
+276:S2-014,S2-014 - Reject General-Knowledge Questions,"**Outcome:**
+295:S2-015,S2-015 - Reject Questions About Another Entity or Platform,"**Outcome:**
+311:S2-016,S2-016 - Prevent Cross-User Data from Entering AI Context,"**Outcome:**
+331:S2-017,S2-017 - Switch the Active AnalysisTarget,"**Outcome:**
+347:S2-018,S2-018 - Change Q&A Context When the Target Changes,"**Outcome:**
+367:S2-019,S2-019 - Prevent Stale Review Context,"**Outcome:**
+385:S2-020,S2-020 - Handle a Target Without Review Data,"**Outcome:**
+# ReviewLens Engineering Context
+Stack: React (Vite) + Tailwind, Flask, Supabase Postgres (SQLAlchemy), Supabase Auth, Gemini.
+
+## 1. Repository Layout
+**NOTE: Routes (controllers) call services. Services call adapters and models.**
+```
+/backend/app/{routes,services,adapters}, models.py, auth.py, errors.py
+/backend/{migrations,tests}
+/frontend/src/{pages,components,api,hooks}
+/ai-transcripts
+```
+
+## 2. Naming
+**NOTE: Use the language's standard convention for compatability with linters**
+- Python: `snake_case` functions and files, `PascalCase` classes.
+- React: `PascalCase` components, `camelCase` variables, `useX` hooks.
+- DB: plural `snake_case` tables, `target_id` style foreign keys.
+- API: lowercase plural paths (`/api/targets`).
+
+## 3. Formatting and Linting
+- Backend: `ruff`. Frontend: ESLint + Prettier.
+- Both run in CI
+
+## 4. Error Handling
+- Define and use error types in `errors.py`
+- Never return stack traces or DB errors
+
+## 5. API Responses
+- Error shape: `{"error": {"code", "message", "fields"}}`
+- Codes: 400/422 validation, 401 unauthenticated, 403/404 forbidden/not found, 422 ingestion failed, 503 LLM unavailable, 500 internal.
+- User id comes only from JWT Token (NOT passed in)
+
+## 6. Logging
+- Python `logging` with request id and target id.
+- Never log secrets or tokens.
+
+## 7. Dependencies
+- Must pass `pip-audit` / `npm audit` in CI
+- New external services go behind an adapter (Spec 2.3, 7.4)
+
+## 8. Testing
+- `pytest` (backend), Vitest (frontend).
+- Each change needs a happy-path and a negative test.
+- Required: auth, ownership, CSV validation, summary math.
+- Q&A tests use the mock LLM client. Assert context and prompt.
+# ReviewLens AI-Assisted Development and Review
+
+**AI-generated code is team-authored code.** It follows the same standards, reviews, tests, and Definition of Done as code written by hand. The developer who submits it is responsible for understanding it.
+
+## AI tools we use
+
+- **Claude Code** and **Claude** for implementation, refactoring, and tests.
+- **Gemini** for explanations and debugging.
+
+Other tools may be used if the developer follows this document.
+
+## Context to give AI tools
+
+Give the tool enough context to strictly follow our rules rather than generic defaults. For any task, supply:
+
+- The Jira story rule IDs (for example, S1-BR-008).
+- The relevant context documents:
+  - `coding-standards.md` (S1-001)
+  - `ui-ux-standards.md` (S1-002)
+  - `data-and-security-guardrails.md` (S1-003)
+  - this document (S1-004)
+- The existing files the change touches, so the tool follows current patterns.
+
+Never paste secrets, `.env` contents, access tokens, or real user data into an AI tool.
+
+## Reviewing generated code
+
+Before opening a pull request, the author must:
+
+- Read every generated line and be able to explain it.
+- Remove dead code and any speculative features that are outside the story's scope.
+- Check that the code follows our conventions for structure, logging, errors, and API responses rather than the tool's defaults.
+
+Pull requests that contain AI-generated code must say so in the description. A teammate other than the author must approve every pull request.
+
+## Validating dependencies and APIs
+
+AI tools sometimes suggest packages or functions that don't exist or are out of date.
+
+- Confirm the package exists on PyPI or npm under the exact name, is  maintained, and has an acceptable license.
+- Check the call against the official documentation for the version we use.
+- Add dependencies to the backend dependency file or `frontend/package.json`, commit `package-lock.json`, and explain the addition in the pull request.
+- New dependencies must pass pip-audit / npm audit in CI.
+- External services such as SerpApi, Supabase, and Gemini are called only through `backend/app/adapters/`.
+
+## Testing generated code
+
+Generated code must pass CI and meet `coding-standards.md`: each change needs a happy-path test and a negative test.
+
+- Review generated tests (pytest and Vitest) as carefully as generated code.
+- Confirm each test fails when the behavior it checks is broken, for example by temporarily removing an ownership check.
+- Use fixtures and mocks, never live services.
+- Never weaken, skip, or delete a failing test to make generated code pass.
+
+## Keeping AI transcripts
+
+The project requires complete AI development transcripts in the `/ai-transcripts` directory.
+
+- Save transcripts as `/ai-transcripts/<story-id>/<date>-<tool>-<author>.md`.
+- Export the full session, including dead ends and failed approaches.
+- Redact secrets as `[REDACTED]`. Make no other edits.
+- Commit transcripts in the same pull request as the code they produced.
+- For inline completion tools that do not produce transcripts, note the tool's use in the pull request description.
+
+## Changes that need extra security review
+
+If generated code touches any of these, a second reviewer checks it against `data-and-security-guardrails.md` before approval.
+
+- **Authentication:** token verification, session handling, or route protection (S1-BR-004).
+- **Ownership:** any query or endpoint that reads or changes user-owned data (S1-BR-008).
+- **Secrets and configuration:** environment variables, `.env.example`, `VITE_*` variables, logging, or error messages (S1-BR-011).
+- **Ingestion:** code that calls SerpApi or parses external review data.
+- **Schema:** migrations and model relationships.
+- **CI configuration:** changes to GitHub Actions workflows or branch protection.
+- **AI prompts and context:** in later sprints, code that builds LLM prompts or selects which reviews reach the model.
+
+A generated change that removes or loosens an ownership check, validation, or test is a red flag, even if it makes the code work.
+Opus 5.5's safeguards stopped the response above · continuing once with that noted
+2:04 PM
+API Error: Opus 5.5's safeguards flagged this message (https://www.anthropic.com/legal/aup). This sometimes happens with safe, normal conversations. Claude Code can't respond to this message with Opus 5.5.
+
+Try rephrasing the request in a new session or change your model.
+
+Learn more: https://support.claude.com/en/articles/8106465
+
+Details: [reasoning_extraction]
+
+Request ID: req_011Ch1SwVfejzzW5FbEYrgGz
+
+Message ID: msg_011Ch1SwVuYZwRppSkD1QUJW
+
+-
+Opus 5.5's safeguards stopped the response above · continuing once with that noted
+2:04 PM
+API Error: Opus 5.5's safeguards flagged this message (https://www.anthropic.com/legal/aup). This sometimes happens with safe, normal conversations. Claude Code can't respond to this message with Opus 5.5.
+
+Try rephrasing the request in a new session or change your model.
+
+Learn more: https://support.claude.com/en/articles/8106465
+
+Details: [reasoning_extraction]
+
+Request ID: req_011Ch1SySLYSQ7VLUhzTh7zg
+
+Message ID: msg_011Ch1SySYgbN2GWBzi2YrR9
+
+API Error: Opus 5.5's safeguards flagged this message (https://www.anthropic.com/legal/aup). This sometimes happens with safe, normal conversations. Claude Code can't respond to this message with Opus 5.5.
+
+Try rephrasing the request in a new session or change your model.
+
+Learn more: https://support.claude.com/en/articles/8106465
+
+Details: [reasoning_extraction]
+
+Request ID: req_011Ch1SySLYSQ7VLUhzTh7zg
+
+Message ID: msg_011Ch1SySYgbN2GWBzi2Yr
+Show more
+2:05 PM
+That error was a hiccup on the API side, not anything in your request, so I'll keep going with S2-002 (integration tests).
+
+
+
+Bash Read ticket, conftest, file sizes
+IN
+cd /home/connor/Desktop/My_Files/NJIT/Fall_2026/cs490/CS490-Project-Team-Merge-Conflict/backend && sed -n 21,38p ../Sprint2Issues.csv; cat tests/conftest.py pytest.ini; wc -l app/*.py app/services/*.py tests/*.py
+
+OUT
+S2-002,S2-002 - Add Critical Integration Test Coverage,"**Outcome:**
+The project contains automated integration tests covering important Sprint 2 boundaries between application services, persistence, ingestion data, and Q&A orchestration.
+
+**Technical Guidance:**
+
+Integration tests should focus on boundaries where independently correct components could still fail when combined.
+
+Representative areas include:
+
+1. Loading persisted reviews for an AnalysisTarget.
+2. Computing an ingestion summary from persisted data.
+3. Passing the correct review dataset into the Q&A service.
+4. Applying authenticated ownership before review retrieval.
+5. Changing the active target and retrieving different data.
+
+The exact testing technology is the team's decision.
+
+**Rules:** S2-BR-001 through S2-BR-014, S2-BR-022 through S2-BR-030",sprint-2,Sprint 2
+import time
+
+import jwt
+import pytest
+
+from app import create_app
+
+SECRET = "test-secret-at-least-32-bytes-long!!"
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    # A developer's backend/.env may contain live SerpApi credentials. The test
+    # client must never use them or make external provider calls.
+    monkeypatch.setenv("SERPAPI_API_KEY", "")
+    monkeypatch.setenv("SERPAPI_API_KEYS", "")
+    monkeypatch.setenv("SERPAPI_MAX_PAGES", "1")
+    from app.models import Base
+
+    app = create_app(
+        {
+            "TESTING": True,
+            "JWT_SECRET": SECRET,
+            "SUPABASE_URL": "https://test.supabase.co",
+            "DATABASE_URL": f"sqlite:///{tmp_path / 'test.db'}",
+        }
+    )
+    engine = app.extensions["database"]
+    Base.metadata.create_all(engine)
+    yield app.test_client()
+    engine.dispose()
+
+
+@pytest.fixture
+def auth_header():
+    """Build an Authorization header for any fake user (reuse for S1-012/013)."""
+
+    def _make(user_id="user-a", secret=SECRET, expires_in=3600):
+        token = jwt.encode(
+            {
+                "sub": user_id,
+                "aud": "authenticated",
+                "iss": "https://test.supabase.co/auth/v1",
+                "exp": int(time.time()) + expires_in,
+            },
+            secret,
+            algorithm="HS256",
+        )
+        return {"Authorization": f"Bearer {token}"}
+
+    return _make
+[pytest]
+pythonpath = .
+    28 app/auth.py
+    39 app/database.py
+    70 app/errors.py
+    71 app/__init__.py
+    77 app/models.py
+   134 app/routes.py
+   115 app/services/ingestion.py
+   121 app/services/qa_prompt.py
+    92 app/services/review_normalization.py
+   220 app/services/review_qa.py
+   134 app/services/review_storage.py
+    76 app/services/review_summary.py
+   208 app/services/targets.py
+    51 tests/conftest.py
+    97 tests/test_auth.py
+    21 tests/test_config.py
+   121 tests/test_cross_user_authorization.py
+    54 tests/test_database_config.py
+    98 tests/test_gemini_fallback.py
+   116 tests/test_ingestion_end_to_end.py
+   164 tests/test_ingestion_submit.py
+   212 tests/test_qa_cross_user_isolation.py
+    87 tests/test_qa_prompt.py
+   271 tests/test_qa_scope_other_entity.py
+   199 tests/test_review_authorization.py
+    65 tests/test_review_normalization.py
+   848 tests/test_review_qa.py
+    69 tests/test_review_source_import.py
+   111 tests/test_review_storage.py
+   236 tests/test_review_summary.py
+   240 tests/test_serpapi_key_rotation.py
+    76 tests/test_short_maps_ingestion.py
+    98 tests/test_short_maps_links.py
+   101 tests/test_target_listing.py
+    69 tests/test_target_model.py
+    75 tests/test_target_ownership.py
+   158 tests/test_target_validation.py
+    85 tests/test_target_workspace.py
+  5107 total
+Bash Find business rule definitions
+IN
+grep -oE "S2-BR-0[0-9]{2}[^\"]{0,200}" Sprint2Issues.csv | sort -u | head -60; ls docs; grep -rn "S2-BR" docs | head
+
+OUT
+The server-side auto mode classifier gave no verdict for Bash: auto mode reviewed this call without its leading cd, and the shell has moved since, so the review does not cover what would run. This is not a judgment that the action is unsafe. In your next response, issue the Bash call once more with exactly this input so auto mode reviews it: {"command":"cd /home/connor/Desktop/My_Files/NJIT/Fall_2026/cs490/CS490-Project-Team-Merge-Conflict && grep -oE \"S2-BR-0[0-9]{2}[^\\\"]{0,200}\" Sprint2Issues.csv | sort -u | head -60; ls docs; grep -rn \"S2-BR\" docs | head","description":"Find business rule definitions"}. Put nothing else in that response but other calls whose denial quoted an input like this one. If it is denied again, do not retry; continue with other tasks and tell the user that auto mode could not check this Bash call, and that they can switch out of auto mode to approve it themselves. Note: reading files, searching code, and other read-only operations do not require the classifier and can still be used.
+Bash Find business rule definitions
+IN
+cd /home/connor/Desktop/My_Files/NJIT/Fall_2026/cs490/CS490-Project-Team-Merge-Conflict && grep -oE "S2-BR-0[0-9]{2}[^\"]{0,200}" Sprint2Issues.csv | sort -u | head -60; ls docs; grep -rn "S2-BR" docs | head
+
+OUT
+S2-BR-001, S2-BR-005 through S2-BR-007
+S2-BR-001, S2-BR-014, S2-BR-022 through S2-BR-026
+S2-BR-001 through S2-BR-004, S2-BR-007
+S2-BR-001 through S2-BR-007, S2-BR-022, S2-BR-026
+S2-BR-001 through S2-BR-014, S2-BR-022 through S2-BR-030
+S2-BR-005 through S2-BR-007
+S2-BR-007, S2-BR-010, S2-BR-011, S2-BR-025
+S2-BR-008, S2-BR-014
+S2-BR-008 through S2-BR-014
+S2-BR-009, S2-BR-012 through S2-BR-014, S2-BR-022 through S2-BR-026
+S2-BR-009 through S2-BR-014, S2-BR-022, S2-BR-027 through S2-BR-031
+S2-BR-010, S2-BR-011, S2-BR-015
+S2-BR-015, S2-BR-016, S2-BR-019 through S2-BR-021
+S2-BR-015 through S2-BR-021
+S2-BR-015 through S2-BR-021, S2-BR-027 through S2-BR-031
+S2-BR-017 through S2-BR-021
+S2-BR-022, S2-BR-026 through S2-BR-030
+S2-BR-022 through S2-BR-024
+S2-BR-023, S2-BR-024
+S2-BR-027 through S2-BR-031
+ai-assisted-development.md
+coding-standards.md
+data-and-security-guardrails.md
+local-env-setup-guide.md
+review-ingestion-source.md
+serpapi-key-management.md
+ui-ux-context.md
+2:05 PM
+The business-rule text itself isn't in the repo, only the IDs, so I'll work from the code. Reading the app layer:
+
+
+
+Bash Read app core files
+IN
+cd /home/connor/Desktop/My_Files/NJIT/Fall_2026/cs490/CS490-Project-Team-Merge-Conflict/backend && cat app/__init__.py app/models.py app/routes.py app/auth.py app/database.py app/errors.py
+
+OUT
+import os
+from pathlib import Path
+
+import jwt
+from dotenv import load_dotenv
+from flask import Flask
+
+from .adapters.gemini_source import GeminiReviewAnswerer, UnconfiguredGemini
+from .adapters.review_source import UnconfiguredReviewSource
+from .adapters.serpapi_source import SerpApiGoogleMapsSource
+from .database import init_database
+from .errors import register_error_handlers
+from .routes import bp
+
+
+def create_app(config=None):
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    app = Flask(__name__)
+    app.config["JWT_SECRET"] = os.environ.get("SUPABASE_JWT_SECRET", "")
+    app.config["SUPABASE_URL"] = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    app.config["DATABASE_URL"] = os.environ.get("DATABASE_URL", "")
+    if config:
+        app.config.update(config)
+    app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 * 1024
+    url = app.config["SUPABASE_URL"]
+    if not url:
+        raise RuntimeError("Set SUPABASE_URL in backend/.env")
+    app.config["JWT_ISSUER"] = f"{url}/auth/v1"
+    app.extensions["supabase_jwks"] = jwt.PyJWKClient(
+        f"{url}/auth/v1/.well-known/jwks.json", timeout=5
+    )
+    register_error_handlers(app)
+    init_database(app)
+    # Team-authorized credentials only; multi-key config overrides legacy single-key config.
+    keys_env = os.environ.get("SERPAPI_API_KEYS", "").strip()
+    keys = [part.strip() for part in keys_env.split(",") if part.strip()] if keys_env else []
+    if not keys and os.environ.get("SERPAPI_API_KEY", "").strip():
+        keys = [os.environ["SERPAPI_API_KEY"].strip()]
+    try:
+        max_pages = int(os.environ.get("SERPAPI_MAX_PAGES", "3"))
+    except ValueError:
+        raise RuntimeError("SERPAPI_MAX_PAGES must be an integer between 1 and 10") from None
+    if not 1 <= max_pages <= 10:
+        raise RuntimeError("SERPAPI_MAX_PAGES must be between 1 and 10")
+    app.extensions.setdefault(
+        "review_source",
+        SerpApiGoogleMapsSource(
+            keys,
+            max_pages=max_pages,
+            quota_preflight=True,
+            extra_sorts=("newestFirst", "ratingHigh", "ratingLow"),
+            min_reviews=20,
+            max_topics=4,
+        )
+        if keys
+        else UnconfiguredReviewSource(),
+    )
+    # Review Q&A model boundary. Without a key the app still boots; asking a question
+    # then reports that Gemini is not configured.
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    gemini_model = os.environ.get("GEMINI_MODEL", "").strip()
+    app.extensions.setdefault(
+        "gemini",
+        GeminiReviewAnswerer(gemini_key, model=gemini_model)
+        if gemini_key and gemini_model
+        else GeminiReviewAnswerer(gemini_key)
+        if gemini_key
+        else UnconfiguredGemini(),
+    )
+    app.register_blueprint(bp)
+    return app
+from datetime import UTC, datetime
+from uuid import uuid4
+
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class AnalysisTarget(Base):
+    __tablename__ = "analysis_targets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    owner_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    platform: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class IngestionRun(Base):
+    __tablename__ = "ingestion_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    target_id: Mapped[str] = mapped_column(
+        ForeignKey("analysis_targets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    imported_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    message: Mapped[str | None] = mapped_column(String(500))
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    __table_args__ = (
+        CheckConstraint("status IN ('succeeded', 'partial', 'failed')", name="ck_run_status"),
+        CheckConstraint(
+            "total_count >= 0 AND imported_count >= 0 AND skipped_count >= 0", name="ck_run_counts"
+        ),
+    )
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    target_id: Mapped[str] = mapped_column(
+        ForeignKey("analysis_targets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ingestion_run_id: Mapped[str] = mapped_column(
+        ForeignKey("ingestion_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    rating: Mapped[float] = mapped_column(Float, nullable=False)
+    source_review_id: Mapped[str | None] = mapped_column(String(255))
+    reviewer_name: Mapped[str | None] = mapped_column(String(255))
+    review_date: Mapped[str | None] = mapped_column(String(100))
+    review_url: Mapped[str | None] = mapped_column(String(2048))
+    source_name: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    __table_args__ = (
+        CheckConstraint("length(trim(text)) > 0", name="ck_review_text_not_empty"),
+        CheckConstraint("rating >= 1 AND rating <= 5", name="ck_review_rating_range"),
+    )
+from flask import Blueprint, current_app, g, jsonify, request
+
+from .auth import require_auth
+from .services.ingestion import import_supplied_reviews, start_ingestion
+from .services.review_qa import answer_question
+from .services.review_storage import list_reviews
+from .services.review_summary import summarize_reviews
+from .services.targets import create_target, get_target, list_targets, update_target
+
+bp = Blueprint("api", __name__, url_prefix="/api")
+
+
+@bp.get("/health")
+def health():
+    return jsonify(status="ok")
+
+
+@bp.get("/me")
+@require_auth
+def me():
+    return jsonify(user_id=g.user_id)
+
+
+@bp.post("/targets")
+@require_auth
+def post_target():
+    target = create_target(
+        current_app.extensions["database"],
+        owner_id=g.user_id,
+        payload=request.get_json(silent=True),
+    )
+    return jsonify(target), 201
+
+
+@bp.get("/targets")
+@require_auth
+def get_targets():
+    # Ownership comes only from the verified token. Query params are never read.
+    targets = list_targets(current_app.extensions["database"], owner_id=g.user_id)
+    return jsonify(targets=targets)
+
+
+@bp.get("/targets/<target_id>")
+@require_auth
+def get_one_target(target_id):
+    # The URL id only says which target is requested; ownership is checked in the query.
+    target = get_target(current_app.extensions["database"], owner_id=g.user_id, target_id=target_id)
+    return jsonify(target)
+
+
+@bp.patch("/targets/<target_id>")
+@require_auth
+def patch_target(target_id):
+    # Ownership is enforced inside update_target; the URL id alone grants nothing.
+    target = update_target(
+        current_app.extensions["database"],
+        owner_id=g.user_id,
+        target_id=target_id,
+        payload=request.get_json(silent=True),
+    )
+    return jsonify(target)
+
+
+@bp.post("/targets/<target_id>/ingestions")
+@require_auth
+def post_ingestion(target_id):
+    # Ownership, body, and source checks all run before the review source is called.
+    result = start_ingestion(
+        current_app.extensions["database"],
+        current_app.extensions["review_source"],
+        owner_id=g.user_id,
+        target_id=target_id,
+        payload=request.get_json(silent=True),
+    )
+    return jsonify(result), 202
+
+
+@bp.post("/targets/<target_id>/ingestions/import")
+@require_auth
+def post_ingestion_import(target_id):
+    # The import service verifies target ownership BEFORE it reads upload bytes.
+    result = import_supplied_reviews(
+        current_app.extensions["database"],
+        owner_id=g.user_id,
+        target_id=target_id,
+        upload=lambda: request.files.get("file"),
+    )
+    return jsonify(run=result), 201
+
+
+@bp.get("/targets/<target_id>/reviews")
+@require_auth
+def get_target_reviews(target_id):
+    try:
+        offset = int(request.args.get("offset", "0"))
+    except ValueError:
+        from .errors import ValidationError
+
+        raise ValidationError("Invalid review offset.") from None
+    if offset < 0 or offset > 100000:
+        from .errors import ValidationError
+
+        raise ValidationError("Invalid review offset.")
+    rows = list_reviews(
+        current_app.extensions["database"],
+        owner_id=g.user_id,
+        target_id=target_id,
+        offset=offset,
+    )
+    return jsonify(reviews=rows)
+
+
+@bp.get("/targets/<target_id>/summary")
+@require_auth
+def get_target_summary(target_id):
+    # Computed from persisted reviews only; another user's target returns 404.
+    summary = summarize_reviews(
+        current_app.extensions["database"], owner_id=g.user_id, target_id=target_id
+    )
+    return jsonify(summary)
+
+
+@bp.post("/targets/<target_id>/questions")
+@require_auth
+def post_target_question(target_id):
+    # Ownership and the review context are enforced inside answer_question.
+    result = answer_question(
+        current_app.extensions["database"],
+        current_app.extensions["gemini"],
+        owner_id=g.user_id,
+        target_id=target_id,
+        payload=request.get_json(silent=True),
+    )
+    return jsonify(result)
+from functools import wraps
+
+import jwt
+from flask import current_app, g, request
+
+from .adapters.supabase_auth import verify_token
+from .errors import Unauthenticated
+
+
+def require_auth(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        parts = request.headers.get("Authorization", "").split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            raise Unauthenticated()
+        try:
+            claims = verify_token(
+                parts[1],
+                current_app.config["JWT_ISSUER"],
+                current_app.extensions.get("supabase_jwks"),
+                current_app.config["JWT_SECRET"],
+            )
+        except jwt.PyJWTError:
+            raise Unauthenticated() from None
+        g.user_id = claims["sub"]
+        return fn(*args, **kwargs)
+
+    return wrapper
+import click
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+
+from .models import Base
+
+
+def enable_row_level_security(connection):
+    """Block Supabase Data API access to app tables; Flask connects as owner and is unaffected."""
+    if connection.dialect.name != "postgresql":
+        return
+    quote = connection.dialect.identifier_preparer.quote
+    for table in Base.metadata.sorted_tables:
+        connection.execute(text(f"ALTER TABLE {quote(table.name)} ENABLE ROW LEVEL SECURITY"))
+
+
+def init_database(app):
+    value = app.config["DATABASE_URL"]
+    if not value or not value.strip():
+        raise RuntimeError("Set DATABASE_URL in backend/.env to your Postgres connection string")
+    try:
+        url = make_url(value)
+    except ArgumentError:
+        raise RuntimeError("DATABASE_URL must be a valid Postgres connection string") from None
+    if url.drivername != "postgresql+psycopg" and not (
+        app.testing and url.get_backend_name() == "sqlite"
+    ):
+        raise RuntimeError("DATABASE_URL must use postgresql+psycopg://")
+    engine = create_engine(url, hide_parameters=True, pool_pre_ping=True)
+    app.extensions["database"] = engine
+
+    @app.cli.command("init-db")
+    def init_db():
+        """Create missing tables and enable RLS; does not drop or change columns."""
+        with engine.begin() as connection:
+            Base.metadata.create_all(connection)
+            enable_row_level_security(connection)
+        click.echo("Database tables initialized.")
+from flask import jsonify
+from werkzeug.exceptions import HTTPException
+
+
+class AppError(Exception):
+    status = 500
+    code = "INTERNAL_ERROR"
+    message = "Something went wrong."
+
+    def __init__(self, message=None, fields=None):
+        super().__init__(message or self.message)
+        if message:
+            self.message = message
+        self.fields = fields or {}
+
+
+class Unauthenticated(AppError):
+    status = 401
+    code = "UNAUTHENTICATED"
+    message = "Please sign in to continue."
+
+
+class NotFound(AppError):
+    status = 404
+    code = "NOT_FOUND"
+    message = "Not found."
+
+
+class ValidationError(AppError):
+    status = 400
+    code = "VALIDATION_ERROR"
+    message = "Provide only name, platform, and a valid HTTP(S) source_url. Ownership is assigned automatically."
+
+
+class IngestionUnavailable(AppError):
+    status = 503
+    code = "INGESTION_UNAVAILABLE"
+    message = "Review ingestion isn't available right now. Please try again later."
+
+
+class IngestionFailed(AppError):
+    status = 422
+    code = "INGESTION_FAILED"
+    message = "No usable review data could be imported."
+
+
+class QaUnavailable(AppError):
+    status = 503
+    code = "QA_UNAVAILABLE"
+    message = "The review assistant isn't available right now. Please try again in a moment."
+
+
+def _body(code, message, fields=None):
+    error = {"code": code, "message": message}
+    if fields:
+        error["fields"] = fields
+    return jsonify(error=error)
+
+
+def register_error_handlers(app):
+    @app.errorhandler(AppError)
+    def handle_app_error(e):
+        return _body(e.code, e.message, e.fields), e.status
+
+    @app.errorhandler(Exception)
+    def handle_unexpected(e):
+        if isinstance(e, HTTPException):
+            return _body("HTTP_ERROR", e.name), e.code
+        app.logger.exception("Unexpected error")
+        return _body("INTERNAL_ERROR", "Something went wrong."), 500
+Bash Read service layer
+IN
+cd /home/connor/Desktop/My_Files/NJIT/Fall_2026/cs490/CS490-Project-Team-Merge-Conflict/backend && cat app/services/review_storage.py app/services/review_summary.py app/services/review_qa.py app/services/targets.py app/services/ingestion.py
+
+OUT
+<persisted-output>
+Output too large (30.1KB). Full output saved to: /home/connor/.claude/projects/-home-connor-Desktop-My-Files-NJIT-Fall-2026-cs490-CS490-Project-Team-Merge-Conflict/044f796b-0293-4d17-bc24-4d378aabd71d/tool-results/bliozbgpg.txt
+
+Preview (first 2KB):
+"""Atomic persistence and tenant-isolated reads for imported customer reviews."""
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..errors import NotFound
+from ..models import AnalysisTarget, IngestionRun, Review
+
+
+def _owned_target(session, *, target_id, owner_id):
+    target = session.scalar(
+        select(AnalysisTarget).where(
+            AnalysisTarget.id == target_id, AnalysisTarget.owner_id == owner_id
+        )
+    )
+    if target is None:
+        raise NotFound("We couldn't find that analysis target.")
+    return target
+
+
+def _run_output(run):
+    return {
+        "id": run.id,
+        "target_id": run.target_id,
+        "source_kind": run.source_kind,
+        "status": run.status,
+        "total_count": run.total_count,
+        "imported_count": run.imported_count,
+        "skipped_count": run.skipped_count,
+        "message": run.message,
+        "started_at": run.started_at.isoformat(),
+        "completed_at": run.completed_at.isoformat(),
+    }
+
+
+def persist_reviews(engine, *, owner_id, target_id, reviews, skipped_count, source_kind):
+    """Commit run and normalized reviews as one transaction; never replace old reviews."""
+    if not reviews:
+        raise ValueError("No valid reviews to persist")
+    with Session(engine) as session, session.begin():
+        _owned_target(session, target_id=target_id, owner_id=owner_id)
+        # Re-ingesting a target must not save the same provider review twice.
+        seen = set(
+            session.scalars(
+                select(Review.source_review_id).where(
+                    Review.target_id == target_id, Review.source_review_id.is_not(None)
+                )
+            )
+        )
+        new_reviews = []
+        for review in reviews:
+            review_id = review.get("source_review_id")
+            if review_id is not None:
+                if review_id in seen:
+                    continue
+                seen.add(review_id)
+            new_reviews.append(review)
+...
+</persisted-output>
+Read bliozbgpg.txt
+2:05 PM
+Now let me see how existing tests set up fakes (Gemini, review source, CSV) so the new tests reuse the same patterns.
+
+
+
+Bash Read existing test patterns and adapters
+IN
+cat tests/test_ingestion_end_to_end.py; sed -n 1,120p tests/test_review_qa.py; sed -n 1,80p tests/test_qa_cross_user_isolation.py; cat app/adapters/review_source.py; sed -n 1,60p app/adapters/review_source_csv.py
+
+OUT
+import io
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.adapters.review_source_csv import RawReviewBatch
+from app.models import IngestionRun, Review
+
+SOURCE_URL = "https://www.google.com/maps/place/Coffee+Shop"
+
+
+def make_target(client, auth_header, user="user-a"):
+    response = client.post(
+        "/api/targets",
+        json={"name": "Coffee shop", "platform": "google_maps", "source_url": SOURCE_URL},
+        headers=auth_header(user),
+    )
+    assert response.status_code == 201
+    return response.get_json()["id"]
+
+
+def upload(client, headers, target_id, csv_bytes):
+    return client.post(
+        f"/api/targets/{target_id}/ingestions/import",
+        headers=headers,
+        data={"file": (io.BytesIO(csv_bytes), "reviews.csv")},
+        content_type="multipart/form-data",
+    )
+
+
+def test_owner_imports_real_supplied_reviews_and_workspace_reports_state(client, auth_header):
+    target_id = make_target(client, auth_header)
+    response = upload(
+        client,
+        auth_header("user-a"),
+        target_id,
+        b"review_text,rating\nGood coffee,5\n,4\nCold tea,2\n",
+    )
+    assert response.status_code == 201
+    run = response.get_json()["run"]
+    assert (run["status"], run["imported_count"], run["skipped_count"]) == ("partial", 2, 1)
+    workspace = client.get(f"/api/targets/{target_id}", headers=auth_header("user-a"))
+    assert workspace.get_json()["latest_ingestion"]["status"] == "partial"
+    reviews = client.get(f"/api/targets/{target_id}/reviews", headers=auth_header("user-a"))
+    assert reviews.status_code == 200
+    assert sorted(x["text"] for x in reviews.get_json()["reviews"]) == ["Cold tea", "Good coffee"]
+
+
+def test_failed_import_records_run_but_not_reviews(client, auth_header):
+    target_id = make_target(client, auth_header)
+    response = upload(client, auth_header("user-a"), target_id, b"review_text,rating\n,5\n")
+    assert response.status_code == 422
+    workspace = client.get(f"/api/targets/{target_id}", headers=auth_header("user-a"))
+    assert workspace.get_json()["latest_ingestion"]["status"] == "failed"
+    reviews = client.get(f"/api/targets/{target_id}/reviews", headers=auth_header("user-a"))
+    assert reviews.get_json()["reviews"] == []
+
+
+def test_other_user_cannot_upload_or_retrieve_reviews(client, auth_header):
+    target_id = make_target(client, auth_header, "user-a")
+    response = upload(client, auth_header("user-b"), target_id, b"review_text,rating\nLeak,5\n")
+    assert response.status_code == 404
+    assert (
+        client.get(f"/api/targets/{target_id}/reviews", headers=auth_header("user-b")).status_code
+        == 404
+    )
+    with Session(client.application.extensions["database"]) as session:
+        assert session.scalars(select(Review)).all() == []
+        assert session.scalars(select(IngestionRun)).all() == []
+
+
+def test_real_source_batch_is_normalized_and_persisted(client, auth_header):
+    target_id = make_target(client, auth_header)
+
+    class FakeProvider:
+        def submit(self, *, target_id, source_url):
+            return RawReviewBatch(
+                rows=[
+                    {
+                        "snippet": "Excellent",
+                        "rating": 5,
+                        "review_id": "g1",
+                        "user": {"name": "Alex"},
+                    }
+                ],
+                source_kind="serpapi_google_maps",
+            )
+
+    client.application.extensions["review_source"] = FakeProvider()
+    response = client.post(f"/api/targets/{target_id}/ingestions", headers=auth_header("user-a"))
+    assert response.status_code == 202
+    assert response.get_json()["run_status"] == "succeeded"
+    reviews = client.get(f"/api/targets/{target_id}/reviews", headers=auth_header("user-a"))
+    assert reviews.get_json()["reviews"][0]["text"] == "Excellent"
+
+
+def test_reingesting_saves_only_reviews_not_already_stored(client, auth_header):
+    target_id = make_target(client, auth_header)
+    batches = [["g1", "g2"], ["g2", "g3"]]
+
+    class FakeProvider:
+        def submit(self, *, target_id, source_url):
+            ids = batches.pop(0)
+            rows = [{"snippet": f"Review {i}", "rating": 4, "review_id": i} for i in ids]
+            return RawReviewBatch(rows=rows, source_kind="serpapi_google_maps")
+
+    client.application.extensions["review_source"] = FakeProvider()
+    url = f"/api/targets/{target_id}/ingestions"
+    assert client.post(url, headers=auth_header("user-a")).get_json()["imported_count"] == 2
+    assert client.post(url, headers=auth_header("user-a")).get_json()["imported_count"] == 1
+    reviews = client.get(f"/api/targets/{target_id}/reviews", headers=auth_header("user-a"))
+    assert sorted(x["source_review_id"] for x in reviews.get_json()["reviews"]) == [
+        "g1",
+        "g2",
+        "g3",
+    ]
+"""S2-013: Review Q&A wires the system prompt + persisted reviews to Gemini.
+
+Service tests use an in-memory database and a fake Gemini (a plain object with an
+``answer`` method), so the model is never called. They prove the service reads the
+owner-scoped persisted reviews, builds a user turn containing those reviews, rejects a
+missing question, and maps a malformed model reply to a transient QaUnavailable rather
+than a 500. The adapter's own construction guards and the HTTP boundary are covered too.
+"""
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app import create_app
+from app.adapters.gemini_source import GeminiReviewAnswerer, UnconfiguredGemini
+from app.errors import NotFound, QaUnavailable, ValidationError
+from app.models import Base
+from app.services.qa_prompt import build_system_prompt
+from app.services.review_qa import _question, _reviews_block, answer_question
+from app.services.review_storage import persist_reviews
+
+# Must match the secret the auth_header fixture signs tokens with (tests/conftest.py).
+SECRET = "test-secret-at-least-32-bytes-long!!"
+
+SOURCE_URL = "https://www.google.com/maps/place/Coffee+Shop"
+
+
+class FakeGemini:
+    """Stands in for the Gemini adapter: returns a scripted reply and records the call."""
+
+    def __init__(self, reply):
+        self._reply = reply
+        self.calls = []
+
+    def answer(self, *, system_prompt, user_content):
+        self.calls.append({"system_prompt": system_prompt, "user_content": user_content})
+        if isinstance(self._reply, Exception):
+            raise self._reply
+        return self._reply
+
+
+@pytest.fixture
+def engine():
+    eng = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(eng)
+    yield eng
+    eng.dispose()
+
+
+def make_target(engine, *, owner_id="user-a", target_id="a"):
+    from app.models import AnalysisTarget
+
+    with Session(engine) as session, session.begin():
+        session.add(
+            AnalysisTarget(
+                id=target_id,
+                owner_id=owner_id,
+                name=target_id.upper(),
+                platform="google_maps",
+                source_url=SOURCE_URL,
+            )
+        )
+    return target_id
+
+
+def seed(engine, target_id, ratings, *, owner_id="user-a"):
+    persist_reviews(
+        engine,
+        owner_id=owner_id,
+        target_id=target_id,
+        source_kind="google_maps_csv",
+        reviews=[{"text": f"review {i}", "rating": r} for i, r in enumerate(ratings)],
+        skipped_count=0,
+    )
+
+
+def seed_reviews(engine, target_id, specs, *, owner_id="user-a"):
+    """Insert reviews with explicit id/created_at/text so order and size are controllable.
+
+    ``specs`` is a list of dicts with keys: id, text, rating, created_at (datetime).
+    Bypasses persist_reviews so the test can set created_at (persist_reviews stamps now).
+    """
+    from datetime import UTC, datetime
+
+    from app.models import IngestionRun, Review
+
+    with Session(engine) as session, session.begin():
+        run = IngestionRun(
+            target_id=target_id,
+            source_kind="google_maps_csv",
+            status="succeeded",
+            total_count=len(specs),
+        )
+        session.add(run)
+        session.flush()
+        for spec in specs:
+            session.add(
+                Review(
+                    id=spec["id"],
+                    target_id=target_id,
+                    ingestion_run_id=run.id,
+                    text=spec.get("text", "x"),
+                    rating=spec.get("rating", 5),
+                    created_at=spec.get("created_at", datetime.now(UTC)),
+                )
+            )
+
+
+# --- _question validation ------------------------------------------------------------------
+
+
+def test_question_returns_trimmed_text():
+    assert _question({"question": "  How is the coffee?  "}) == "How is the coffee?"
+
+
+@pytest.mark.parametrize(
+    "payload", [None, {}, {"question": ""}, {"question": "   "}, {"question": 5}]
+)
+def test_blank_or_missing_question_is_rejected(payload):
+    with pytest.raises(ValidationError) as exc:
+"""S2-016: another user's review data can never enter the AI context.
+
+These tests go through the real HTTP endpoint (auth, routing, ownership, context
+building) with two users and two datasets. The model is a recording fake, so each test
+inspects exactly what would have been sent to Gemini instead of judging isolation from
+generated prose.
+
+User A's reviews contain a distinctive phrase that appears nowhere in User B's data.
+If any part of User A's dataset reached User B's model call, that phrase would show up
+in the captured context.
+"""
+
+import re
+
+import pytest
+from sqlalchemy.orm import Session
+
+from app import create_app
+from app.models import AnalysisTarget, Base
+from app.services.review_storage import persist_reviews
+
+SECRET = "test-secret-at-least-32-bytes-long!!"  # matches conftest.auth_header
+SOURCE_URL = "https://www.google.com/maps/place/Example"
+SECRET_PHRASE = "PURPLE-ELEPHANT-WAFFLE-7731"
+REPLY = '{"status": "answered", "answer": "ok", "review_ids": []}'
+
+USER_A_REVIEWS = [
+    f"The {SECRET_PHRASE} special is the best thing on the menu.",
+    f"I drove an hour for the {SECRET_PHRASE}. Worth it.",
+    "Battery-powered candles on every table, cozy vibe.",
+]
+USER_B_REVIEWS = [
+    "Customer service was slow but friendly.",
+    "The staff fixed my order quickly.",
+]
+
+
+class RecordingGemini:
+    """Fake model boundary: records every call and returns a fixed valid reply."""
+
+    def __init__(self):
+        self.calls = []
+
+    def answer(self, *, system_prompt, user_content):
+        self.calls.append({"system_prompt": system_prompt, "user_content": user_content})
+        return REPLY
+
+
+def add_target(engine, *, owner_id, target_id, name, reviews):
+    with Session(engine) as session, session.begin():
+        session.add(
+            AnalysisTarget(
+                id=target_id,
+                owner_id=owner_id,
+                name=name,
+                platform="google_maps",
+                source_url=SOURCE_URL,
+            )
+        )
+    persist_reviews(
+        engine,
+        owner_id=owner_id,
+        target_id=target_id,
+        source_kind="google_maps_csv",
+        reviews=[{"text": text, "rating": 5} for text in reviews],
+        skipped_count=0,
+    )
+
+
+@pytest.fixture
+def setup(tmp_path, monkeypatch):
+    monkeypatch.setenv("SERPAPI_API_KEY", "")
+    monkeypatch.setenv("SERPAPI_API_KEYS", "")
+    app = create_app(
+        {
+            "TESTING": True,
+            "JWT_SECRET": SECRET,
+            "SUPABASE_URL": "https://test.supabase.co",
+            "DATABASE_URL": f"sqlite:///{tmp_path / 'isolation.db'}",
+        }
+"""Boundary to the external review source (Google Maps reviews).
+
+The ingestion service hands a verified target to this adapter only after the
+authentication, ownership, and source checks pass. Fetching reviews from the
+source is implemented in S1-020; until then the adapter reports that ingestion
+is unavailable instead of pretending to succeed or substituting sample data.
+"""
+
+from ..errors import IngestionUnavailable
+
+
+class UnconfiguredReviewSource:
+    def submit(self, *, target_id, source_url):
+        raise IngestionUnavailable()
+"""Source-specific parsing for *supplied* Google Maps review CSV exports.
+
+The file is user-supplied evidence, not a claim that we fetched it from Google.
+Normalization and persistence happen in their own application layers.
+"""
+
+import csv
+import io
+import re
+from dataclasses import dataclass
+
+MAX_CSV_BYTES = 2 * 1024 * 1024
+MAX_CSV_ROWS = 5000
+
+
+class SourceFormatError(ValueError):
+    """An uploaded document cannot be interpreted as a review CSV."""
+
+
+@dataclass(frozen=True)
+class RawReviewBatch:
+    rows: list[dict]
+    source_kind: str
+
+
+def _column_name(name):
+    return re.sub(r"[^a-z0-9]+", "_", name.lower().strip()).strip("_")
+
+
+def parse_review_csv(data: bytes) -> RawReviewBatch:
+    """Parse a bounded UTF-8 CSV; leave individual review validation for S1-021."""
+    if not data or len(data) > MAX_CSV_BYTES:
+        raise SourceFormatError("Select a nonempty UTF-8 CSV smaller than 2 MB.")
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise SourceFormatError("The CSV must use UTF-8 encoding.") from None
+    if "\x00" in text:
+        raise SourceFormatError("The supplied file is not a valid CSV.")
+    try:
+        reader = csv.DictReader(io.StringIO(text, newline=""), strict=True)
+        if not reader.fieldnames or any(not isinstance(x, str) for x in reader.fieldnames):
+            raise SourceFormatError("The CSV needs column headers.")
+        keys = [_column_name(x) for x in reader.fieldnames]
+        if len(keys) != len(set(keys)) or not all(keys):
+            raise SourceFormatError("The CSV contains duplicate or empty column names.")
+        if not set(keys).intersection({"review_text", "text", "review", "snippet", "content"}):
+            raise SourceFormatError("Include a review_text column.")
+        if not set(keys).intersection({"rating", "stars", "review_rating"}):
+            raise SourceFormatError("Include a rating column.")
+        rows = []
+        for row in reader:
+            if len(rows) >= MAX_CSV_ROWS:
+                raise SourceFormatError("Import at most 5,000 review rows at a time.")
+            if None in row:
+                raise SourceFormatError("The CSV includes a row with more values than columns.")
+            rows.append({keys[i]: row.get(header) for i, header in enumerate(reader.fieldnames)})
+    except csv.Error:
+        raise SourceFormatError("The CSV contains malformed quoting or rows.") from None
+    return RawReviewBatch(rows=rows, source_kind="google_maps_csv")
+Existing tests cover each piece mostly in isolation, so the gap S2-002 targets is the full chain from ingestion through reviews, summary, and Q&A. I'm checking two more files before writing anything.
+Bash Read normalization, prompt hooks, CI config
+IN
+cat app/services/review_normalization.py; sed -n 1,121p app/services/qa_prompt.py | grep -n "target_name\|platform\|ANSWERED\|RESPONSE_STATUSES" | head; cat .coveragerc; grep -n "pytest\|cov" ../.github/workflows/ci.yml
+
+OUT
+"""Canonical Review representation shared by the ingestion and persistence layers."""
+
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+
+MAX_REVIEW_LENGTH = 20000
+
+
+@dataclass(frozen=True)
+class NormalizedReview:
+    text: str
+    rating: float
+    source_review_id: str | None = None
+    reviewer_name: str | None = None
+    review_date: str | None = None
+    review_url: str | None = None
+    source_name: str | None = None
+
+
+@dataclass(frozen=True)
+class NormalizationResult:
+    reviews: list[NormalizedReview]
+    total_count: int
+    skipped_count: int
+
+
+def _first(row, names):
+    for name in names:
+        value = row.get(name)
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _optional(value, limit):
+    if isinstance(value, str):
+        value = value.strip()
+        return value[:limit] or None
+    return None
+
+
+def _rating(value):
+    if isinstance(value, bool):
+        return None
+    try:
+        number = Decimal(str(value))
+        if number.is_finite() and 1 <= number <= 5:
+            return float(number)
+    except (InvalidOperation, TypeError, ValueError):
+        pass
+    return None
+
+
+def normalize_review(row):
+    if not isinstance(row, dict):
+        return None
+    text = _first(row, ("review_text", "text", "review", "snippet", "content"))
+    if not text and isinstance(row.get("extracted_snippet"), dict):
+        text = row["extracted_snippet"].get("original")
+    rating = _rating(_first(row, ("rating", "stars", "review_rating")))
+    if not isinstance(text, str) or not text.strip() or len(text.strip()) > MAX_REVIEW_LENGTH:
+        return None
+    if rating is None:
+        return None
+    user = row.get("user") if isinstance(row.get("user"), dict) else {}
+    return NormalizedReview(
+        text=text.strip(),
+        rating=rating,
+        source_review_id=_optional(_first(row, ("review_id", "source_review_id", "id")), 255),
+        reviewer_name=_optional(
+            _first(row, ("reviewer_name", "reviewer", "author")) or user.get("name"), 255
+        ),
+        review_date=_optional(_first(row, ("iso_date", "review_date", "date")), 100),
+        review_url=_optional(_first(row, ("review_url", "link", "url")), 2048),
+        source_name=_optional(_first(row, ("source", "source_name")), 100),
+    )
+
+
+def normalize_reviews(rows):
+    """Skip malformed individual records, without losing good neighbors."""
+    if not isinstance(rows, list):
+        raise ValueError("Review source returned an invalid review collection")
+    normalized = []
+    for row in rows:
+        candidate = normalize_review(row)
+        if candidate is not None:
+            normalized.append(candidate)
+    return NormalizationResult(
+        reviews=normalized,
+        total_count=len(rows),
+        skipped_count=len(rows) - len(normalized),
+    )
+16:#   4: S2-015 sharpens rule 5. Other platforms are named (Yelp, Tripadvisor, Amazon) and
+25:ANSWERED = "answered"
+28:RESPONSE_STATUSES = (ANSWERED, INSUFFICIENT_EVIDENCE, OUT_OF_SCOPE)
+36:- Business: "{target_name}"
+37:- Review platform: {platform_label}
+44:   this kind of business, or anything you may know about "{target_name}" from elsewhere.
+54:   that you can only answer questions about the reviews of "{target_name}" and invite
+57:   reviews from any platform other than {platform_label} (for example Yelp, Tripadvisor,
+58:   or Amazon), even when the question names "{target_name}". You only have
+59:   {platform_label} reviews for "{target_name}".
+[report]
+include_namespace_packages = True
+45:      - name: Unit tests with coverage
+46:        run: npm run test:coverage
+48:      - name: Changed-code coverage gate
+50:        run: pipx run diff-cover coverage/cobertura-coverage.xml --compare-branch=origin/$GITHUB_BASE_REF --fail-under=70
+88:      - name: Unit tests with coverage
+89:        run: pytest --cov=app --cov-report=xml
+91:      - name: Changed-code coverage gate
+93:        run: diff-cover coverage.xml --compare-branch=origin/$GITHUB_BASE_REF --fail-under=80
+I'm writing one new integration test file that runs every case through the real HTTP stack and SQLite, with only the review provider and Gemini faked at the edges.
+Write test_sprint2_integration.py
+350 lines
+"""S2-002: integration tests across the Sprint 2 service boundaries.
+
+Unit tests elsewhere prove each layer on its own (often by seeding the database
+directly). These tests prove the layers agree when combined. Every test drives the real
+HTTP stack: JWT auth -> routes -> services -> SQLAlchemy -> database. Review data enters
+only through the real ingestion endpoints (CSV upload or a review-source batch), then is
+read back through the reviews, summary, and Q&A endpoints.
+
+Only the two external boundaries are faked:
+
+- the review provider (``review_source``) returns a scripted ``RawReviewBatch``;
+- Gemini is a ``RecordingGemini`` that stores every prompt it receives, so a test can
+  check exactly which reviews would have reached the model.
+
+Boundaries covered (ticket "representative areas"):
+
+1. Loading persisted reviews for an AnalysisTarget.
+2. Computing the ingestion summary from persisted data.
+3. Passing the correct review dataset into the Q&A service.
+4. Applying authenticated ownership before review retrieval.
+5. Changing the active target and retrieving different data.
+"""
+
+import io
+import json
+import re
+
+import pytest
+
+from app.adapters.review_source_csv import RawReviewBatch
+
+SOURCE_URL = "https://www.google.com/maps/place/Example"
+REVIEW_ID = re.compile(r'<review id="([^"]+)"')
+
+
+class RecordingGemini:
+    """Fake model: records each call and answers by citing every review it was sent.
+
+    ``extra_ids`` are added to the citation list to check that the service drops ids
+    that were never part of the supplied context.
+    """
+
+    def __init__(self, extra_ids=()):
+        self.calls = []
+        self.extra_ids = list(extra_ids)
+
+    def answer(self, *, system_prompt, user_content):
+        self.calls.append({"system_prompt": system_prompt, "user_content": user_content})
+        ids = REVIEW_ID.findall(user_content) + self.extra_ids
+        return json.dumps({"status": "answered", "answer": "From the reviews.", "review_ids": ids})
+
+    def context_ids(self, call=-1):
+        return REVIEW_ID.findall(self.calls[call]["user_content"])
+
+
+class ScriptedProvider:
+    """Fake review source: returns one queued batch of provider rows per ingestion."""
+
+    def __init__(self, *batches):
+        self.batches = list(batches)
+        self.submitted = []
+
+    def submit(self, *, target_id, source_url):
+        self.submitted.append(target_id)
+        return RawReviewBatch(rows=self.batches.pop(0), source_kind="serpapi_google_maps")
+
+
+@pytest.fixture
+def gemini(client):
+    fake = RecordingGemini()
+    client.application.extensions["gemini"] = fake
+    return fake
+
+
+# --- HTTP helpers ----------------------------------------------------------------------------
+
+
+def create_target(client, headers, name):
+    response = client.post(
+        "/api/targets",
+        json={"name": name, "platform": "google_maps", "source_url": SOURCE_URL},
+        headers=headers,
+    )
+    assert response.status_code == 201
+    return response.get_json()["id"]
+
+
+def upload_csv(client, headers, target_id, csv_text):
+    return client.post(
+        f"/api/targets/{target_id}/ingestions/import",
+        headers=headers,
+        data={"file": (io.BytesIO(csv_text.encode()), "reviews.csv")},
+        content_type="multipart/form-data",
+    )
+
+
+def get_reviews(client, headers, target_id):
+    response = client.get(f"/api/targets/{target_id}/reviews", headers=headers)
+    assert response.status_code == 200
+    return response.get_json()["reviews"]
+
+
+def get_summary(client, headers, target_id):
+    response = client.get(f"/api/targets/{target_id}/summary", headers=headers)
+    assert response.status_code == 200
+    return response.get_json()
+
+
+def ask(client, headers, target_id, question="What do customers say?"):
+    return client.post(
+        f"/api/targets/{target_id}/questions", json={"question": question}, headers=headers
+    )
+
+
+# --- 1-3. One ingested dataset is what reviews, summary, and Q&A all see ----------------------
+
+
+def test_csv_import_flows_into_reviews_summary_and_qa_context(client, auth_header, gemini):
+    owner = auth_header("user-a")
+    target_id = create_target(client, owner, "Corner Cafe")
+    # Two valid rows plus one blank-text and one out-of-range row that must be skipped.
+    response = upload_csv(
+        client,
+        owner,
+        target_id,
+        "review_text,rating\nGreat espresso,5\n,4\nSlow service,2\nBad rating,9\n",
+    )
+    assert response.status_code == 201
+    run = response.get_json()["run"]
+    assert (run["status"], run["imported_count"], run["skipped_count"]) == ("partial", 2, 2)
+
+    reviews = get_reviews(client, owner, target_id)
+    assert sorted(r["text"] for r in reviews) == ["Great espresso", "Slow service"]
+
+    summary = get_summary(client, owner, target_id)
+    assert summary["review_count"] == 2
+    assert summary["average_rating"] == 3.5
+    assert summary["rating_distribution"] == {"1": 0, "2": 1, "3": 0, "4": 0, "5": 1}
+    assert summary["latest_ingestion"]["id"] == run["id"]
+
+    answer = ask(client, owner, target_id)
+    assert answer.status_code == 200
+    body = answer.get_json()
+    # The model received exactly the persisted reviews (same ids), and nothing skipped.
+    persisted_ids = {r["id"] for r in reviews}
+    assert set(gemini.context_ids()) == persisted_ids
+    assert body["reviews_considered"] == summary["review_count"]
+    assert "Bad rating" not in gemini.calls[-1]["user_content"]
+    assert "Corner Cafe" in gemini.calls[-1]["system_prompt"]
+    assert set(body["review_ids"]) == persisted_ids
+
+
+def test_summary_reflects_all_persisted_runs_but_not_failed_or_duplicate_data(
+    client, auth_header, gemini
+):
+    owner = auth_header("user-a")
+    target_id = create_target(client, owner, "Corner Cafe")
+    client.application.extensions["review_source"] = ScriptedProvider(
+        [
+            {"snippet": "Lovely staff", "rating": 5, "review_id": "g1"},
+            {"snippet": "Too loud", "rating": 3, "review_id": "g2"},
+        ],
+        # The second provider run repeats g2; it must not be stored or counted twice.
+        [
+            {"snippet": "Too loud", "rating": 3, "review_id": "g2"},
+            {"snippet": "Cold food", "rating": 1, "review_id": "g3"},
+        ],
+    )
+    url = f"/api/targets/{target_id}/ingestions"
+    assert client.post(url, headers=owner).get_json()["imported_count"] == 2
+    assert client.post(url, headers=owner).get_json()["imported_count"] == 1
+
+    summary = get_summary(client, owner, target_id)
+    assert summary["review_count"] == 3
+    assert summary["average_rating"] == 3.0
+    assert summary["latest_ingestion"]["status"] == "succeeded"
+
+    # A failed CSV import afterwards records a run but leaves the dataset unchanged.
+    assert upload_csv(client, owner, target_id, "review_text,rating\n,5\n").status_code == 422
+    after_failure = get_summary(client, owner, target_id)
+    assert after_failure["review_count"] == 3
+    assert after_failure["average_rating"] == 3.0
+    assert after_failure["latest_ingestion"]["status"] == "failed"
+
+    ask(client, owner, target_id)
+    context_ids = gemini.context_ids()
+    assert len(context_ids) == len(set(context_ids)) == 3
+    assert set(context_ids) == {r["id"] for r in get_reviews(client, owner, target_id)}
+
+
+def test_qa_drops_citations_that_are_not_in_the_persisted_dataset(client, auth_header):
+    owner = auth_header("user-a")
+    target_a = create_target(client, owner, "Cafe A")
+    target_b = create_target(client, owner, "Cafe B")
+    upload_csv(client, owner, target_a, "review_text,rating\nNice patio,4\n")
+    upload_csv(client, owner, target_b, "review_text,rating\nNo parking,2\n")
+    foreign_id = get_reviews(client, owner, target_b)[0]["id"]
+
+    # The model also "cites" a real review id from another target and an invented id.
+    fake = RecordingGemini(extra_ids=[foreign_id, "made-up-id"])
+    client.application.extensions["gemini"] = fake
+    body = ask(client, owner, target_a).get_json()
+
+    assert body["review_ids"] == [get_reviews(client, owner, target_a)[0]["id"]]
+
+
+def test_reviews_ingested_after_a_question_are_used_by_the_next_question(
+    client, auth_header, gemini
+):
+    owner = auth_header("user-a")
+    target_id = create_target(client, owner, "Corner Cafe")
+    upload_csv(client, owner, target_id, "review_text,rating\nFirst visit was great,5\n")
+    ask(client, owner, target_id)
+    assert len(gemini.context_ids()) == 1
+
+    upload_csv(client, owner, target_id, "review_text,rating\nSecond visit was worse,2\n")
+    ask(client, owner, target_id)
+    assert len(gemini.context_ids()) == 2
+    assert "Second visit was worse" in gemini.calls[-1]["user_content"]
+    assert get_summary(client, owner, target_id)["review_count"] == 2
+
+
+# --- 4. Authenticated ownership is applied before any review retrieval ------------------------
+
+
+def test_non_owner_gets_identical_not_found_and_no_review_data(client, auth_header, gemini):
+    owner, intruder = auth_header("user-a"), auth_header("user-b")
+    target_id = create_target(client, owner, "Corner Cafe")
+    upload_csv(client, owner, target_id, "review_text,rating\nSecret menu item,5\n")
+
+    for path in ("reviews", "summary"):
+        foreign = client.get(f"/api/targets/{target_id}/{path}", headers=intruder)
+        missing = client.get(f"/api/targets/does-not-exist/{path}", headers=intruder)
+        assert foreign.status_code == missing.status_code == 404
+        # Same body as a missing id, so the intruder can't tell the target exists.
+        assert foreign.get_json() == missing.get_json()
+        assert "Secret menu item" not in foreign.get_data(as_text=True)
+
+    foreign = ask(client, intruder, target_id)
+    missing = ask(client, intruder, "does-not-exist")
+    assert foreign.status_code == missing.status_code == 404
+    assert foreign.get_json() == missing.get_json()
+    # Ownership failed before review retrieval, so the model was never called.
+    assert gemini.calls == []
+
+    # The owner's data is untouched and still readable by the owner.
+    assert get_summary(client, owner, target_id)["review_count"] == 1
+
+
+def test_non_owner_cannot_ingest_into_or_change_another_users_dataset(client, auth_header):
+    owner, intruder = auth_header("user-a"), auth_header("user-b")
+    target_id = create_target(client, owner, "Corner Cafe")
+    upload_csv(client, owner, target_id, "review_text,rating\nGenuine review,4\n")
+    provider = ScriptedProvider([{"snippet": "Injected", "rating": 1, "review_id": "x"}])
+    client.application.extensions["review_source"] = provider
+
+    assert upload_csv(client, intruder, target_id, "review_text,rating\nFake,1\n").status_code == 404
+    assert client.post(f"/api/targets/{target_id}/ingestions", headers=intruder).status_code == 404
+    # The ownership check runs before the provider is called at all.
+    assert provider.submitted == []
+
+    summary = get_summary(client, owner, target_id)
+    assert (summary["review_count"], summary["average_rating"]) == (1, 4.0)
+    assert [r["text"] for r in get_reviews(client, owner, target_id)] == ["Genuine review"]
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("get", "reviews"), ("get", "summary"), ("post", "questions")],
+)
+def test_unauthenticated_requests_never_reach_review_data(
+    client, auth_header, gemini, method, path
+):
+    owner = auth_header("user-a")
+    target_id = create_target(client, owner, "Corner Cafe")
+    upload_csv(client, owner, target_id, "review_text,rating\nPrivate review,5\n")
+
+    bad_token = auth_header("user-a", secret="wrong-secret-that-is-at-least-32-bytes")
+    for headers in ({}, bad_token):
+        response = getattr(client, method)(
+            f"/api/targets/{target_id}/{path}", json={"question": "Hi?"}, headers=headers
+        )
+        assert response.status_code == 401
+        assert "Private review" not in response.get_data(as_text=True)
+    assert gemini.calls == []
+
+
+# --- 5. Changing the active target retrieves different data ----------------------------------
+
+
+def test_switching_targets_switches_reviews_summary_and_qa_context(client, auth_header, gemini):
+    owner = auth_header("user-a")
+    bakery = create_target(client, owner, "Sunrise Bakery")
+    garage = create_target(client, owner, "Quick Lube Garage")
+    upload_csv(client, owner, bakery, "review_text,rating\nFresh croissants,5\nTiny seating,4\n")
+    upload_csv(client, owner, garage, "review_text,rating\nOverpriced oil change,1\n")
+    bakery_ids = {r["id"] for r in get_reviews(client, owner, bakery)}
+    garage_ids = {r["id"] for r in get_reviews(client, owner, garage)}
+    assert bakery_ids.isdisjoint(garage_ids)
+
+    # Simulate a user flipping between targets: bakery -> garage -> bakery.
+    expected = [
+        (bakery, "Sunrise Bakery", bakery_ids, 2, 4.5),
+        (garage, "Quick Lube Garage", garage_ids, 1, 1.0),
+        (bakery, "Sunrise Bakery", bakery_ids, 2, 4.5),
+    ]
+    for target_id, name, ids, count, average in expected:
+        summary = get_summary(client, owner, target_id)
+        assert (summary["target_id"], summary["review_count"]) == (target_id, count)
+        assert summary["average_rating"] == average
+        assert {r["id"] for r in get_reviews(client, owner, target_id)} == ids
+
+        assert ask(client, owner, target_id).status_code == 200
+        call = gemini.calls[-1]
+        assert set(gemini.context_ids()) == ids
+        assert f'"{name}"' in call["system_prompt"]
+        other = "Quick Lube Garage" if name == "Sunrise Bakery" else "Sunrise Bakery"
+        assert other not in call["system_prompt"] + call["user_content"]
+
+    assert len(gemini.calls) == 3
+
+
+def test_switching_to_a_target_without_reviews_does_not_reuse_previous_data(
+    client, auth_header, gemini
+):
+    owner = auth_header("user-a")
+    full = create_target(client, owner, "Busy Diner")
+    empty = create_target(client, owner, "New Taqueria")
+    upload_csv(client, owner, full, "review_text,rating\nGreat pancakes,5\n")
+
+    assert ask(client, owner, full).status_code == 200
+    calls_before = len(gemini.calls)
+
+    # The empty target must not fall back to the previously viewed target's reviews.
+    assert get_reviews(client, owner, empty) == []
+    summary = get_summary(client, owner, empty)
+    assert summary["review_count"] == 0
+    assert summary["average_rating"] is None
+    assert summary["latest_ingestion"] is None
+    response = ask(client, owner, empty)
+    assert response.status_code == 400
+    assert response.get_json()["error"]["code"] == "VALIDATION_ERROR"
+    assert len(gemini.calls) == calls_before
+
+    # Once it has its own data, Q&A uses only that data.
+    upload_csv(client, owner, empty, "review_text,rating\nBest al pastor in town,5\n")
+    assert ask(client, owner, empty).status_code == 200
+    assert "Best al pastor in town" in gemini.calls[-1]["user_content"]
+    assert "Great pancakes" not in gemini.calls[-1]["user_content"]
+Bash Run new tests and lint
+IN
+ls -d .venv venv 2>/dev/null; (source .venv/bin/activate 2>/dev/null || source venv/bin/activate 2>/dev/null; python -m pytest tests/test_sprint2_integration.py -q 2>&1 | tail -30; ruff check tests/test_sprint2_integration.py; ruff format --check tests/test_sprint2_integration.py)
+
+OUT
+Exit code 1
+.venv
+...........                                                              [100%]
+11 passed in 0.86s
+All checks passed!
+unformatted: File would be reformatted
+   --> tests/test_sprint2_integration.py:257:12
+    |
+256 |
+    -     assert upload_csv(client, intruder, target_id, "review_text,rating\nFake,1\n").status_code == 404
+257 +     assert (
+258 +         upload_csv(client, intruder, target_id, "review_text,rating\nFake,1\n").status_code == 404
+259 +     )
+260 |     assert client.post(f"/api/targets/{target_id}/ingestions", headers=intruder).status_code == 404
+    |
+
+1 file would be reformatted
+2:06 PM
+All 11 pass and lint is clean. Ruff just wants one line wrapped, so I'll apply the formatter, then run the full suite.
+
+
+
+Bash Format file and run full backend suite
+IN
+source .venv/bin/activate && ruff format tests/test_sprint2_integration.py && python -m pytest -q 2>&1 | tail -3
+
+OUT
+1 file reformatted
+ERROR tests/test_gemini_fallback.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.35s
+[This command modified 1 file you've previously read: tests/test_sprint2_integration.py. Call Read before editing.]
+Bash Check whether collection error is pre-existing
+IN
+source .venv/bin/activate && python -m pytest tests/test_gemini_fallback.py -q 2>&1 | grep -E "Error|error" | head -5; git stash -q && python -m pytest tests/test_gemini_fallback.py -q 2>&1 | tail -2; git stash pop -q && git status --short
+
+OUT
+ImportError while importing test module '/home/connor/Desktop/My_Files/NJIT/Fall_2026/cs490/CS490-Project-Team-Merge-Conflict/backend/tests/test_gemini_fallback.py'.
+    from google.genai import errors as genai_errors
+E   ModuleNotFoundError: No module named 'google'
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.11s
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.11s
+A  ../docs/ui-ux-standards.md
+?? tests/test_sprint2_integration.py
+That test failure is unrelated to my change: the local .venv lacks google-genai, and the file fails the same way with my change stashed. I'm running the rest of the suite next.
+Bash Run full suite minus env-broken file, lint
+IN
+source .venv/bin/activate && python -m pytest -q --ignore=tests/test_gemini_fallback.py 2>&1 | tail -2; ruff check tests/ && ruff format --check tests/test_sprint2_integration.py
+
+OUT
+.....................                                                    [100%]
+372 passed, 9 skipped in 13.39s
+All checks passed!
+1 file already formatted
+The full backend suite passes with 372 tests. Next I'll deliberately break the code three times to confirm the new tests catch each break, as the team's AI-dev doc asks.
+Bash
+IN
+source .venv/bin/activate
+T=tests/test_sprint2_integration.py
+echo "== M1: drop owner filter from find_owned_target"
+sed -i 's/AnalysisTarget.id == target_id, AnalysisTarget.owner_id == owner_id/AnalysisTarget.id == target_id/' app/services/targets.py
+python -m pytest $T -q 2>&1 | grep -E "^FAILED|passed|failed" ; git checkout -q app/services/targets.py
+echo "== M2: drop target filter from the shared review dataset query"
+sed -i 's/.where(Review.target_id == target_id, AnalysisTarget.owner_id == owner_id)/.where(AnalysisTarget.owner_id == owner_id)/' app/services/review_summary.py
+python -m pytest $T -q 2>&1 | grep -E "^FAILED|passed|failed" ; git checkout -q app/services/review_summary.py
+echo "== M3: trust model citations without checking supplied context"
+sed -i 's/if review_id in allowed and review_id not in review_ids:/if review_id not in review_ids:/' app/services/review_qa.py
+python -m pytest $T -q 2>
+
+OUT
+Interrupted: the response that made this tool call was stopped by a safety classifier while the call was running; it may have partially or fully completed.
+Opus 5.5's safeguards stopped the response above · continuing once with that noted
+2:07 PM
+The last command was cut off partway, so it may have left one of the deliberately broken service files in place. Checking:
+
+
+
+Bash Check working tree for leftover edits
+IN
+cd /home/connor/Desktop/My_Files/NJIT/Fall_2026/cs490/CS490-Project-Team-Merge-Conflict && git status --short && git diff --stat
+
+OUT
+A  docs/ui-ux-standards.md
+?? backend/tests/test_sprint2_integration.py
+2:07 PM
+I added one file, backend/tests/test_sprint2_integration.py, with 11 integration tests for S2-002. All of them pass, the full backend suite passes (372 tests), and ruff is clean. No application code changed.
+
+Not checked: my last step was to break the code on purpose and confirm the new tests fail, as your team's AI-dev doc asks. That run was interrupted, so I have no results from it. The working tree is clean: no service files were left modified, and only the new test file and your staged docs/ui-ux-standards.md show up. You may want to do this check by hand before the PR. For example, remove AnalysisTarget.owner_id == owner_id from find_owned_target in targets.py, run the new file, and revert.
+
+Why these tests are different from what's already there
+The existing tests mostly check one layer at a time and often insert rows straight into the database. These tests check that the layers agree when combined:
+
+Real stack: every test sends real HTTP requests through JWT auth, the routes, the services, SQLAlchemy and SQLite.
+Real ingestion: review data only gets in through the actual ingestion endpoints (CSV upload, or a review-source batch). No test inserts reviews directly.
+Two fakes at the external edges:
+ScriptedProvider stands in for SerpApi and returns queued batches.
+RecordingGemini stores every prompt it receives, so tests check exactly which reviews would have reached the model rather than judging the answer text.
+How the tests map to the ticket
+Ticket area	Tests
+1. Loading persisted reviews	test_csv_import_flows_into_reviews_summary_and_qa_context: a CSV with 2 good rows and 2 bad ones. The reviews endpoint returns exactly the 2 good ones.
+2. Summary from persisted data	test_summary_reflects_all_persisted_runs_but_not_failed_or_duplicate_data: two provider runs with one overlapping review. The count is 3, not 4, and the average is right. A later failed import doesn't change the dataset, but latest_ingestion shows failed.
+3. Correct dataset into Q&A	The model receives exactly the persisted review ids, and skipped rows never reach it. test_qa_drops_citations_... checks that a citation pointing at another target's review, or at a made-up id, is removed. test_reviews_ingested_after_a_question_... checks that newly added reviews show up in the next question, so nothing stale is reused.
+4. Ownership before retrieval	A non-owner gets a 404 that is identical to a "doesn't exist" response for reviews, summary and Q&A, and Gemini is never called. A non-owner can't ingest data into someone else's target: the provider isn't even called. Requests with no token or a bad token get a 401 on all three endpoints.
+5. Changing the active target	Switching between two targets (bakery, then garage, then bakery) changes the summary, the review list, the prompt's business name and the Q&A context each time, with nothing carried over. Switching to an empty target gives count=0 and a Q&A 400, never the previous target's reviews.
+Local environment issue (not caused by this change)
+tests/test_gemini_fallback.py fails to load because your local .venv doesn't have google-genai installed. It fails the same way without my change. Running pip install -r backend/requirements.txt should fix it.
+
+I haven't committed anything. Your workflow also expects an AI transcript in ai-transcripts/S2-002/ and a note in the PR that the code is AI-assisted. Tell me if you want me to branch, commit and open the PR.
+
+
+
+why chanes in branch i just checked out
+Bash Show current branch and pending changes
+IN
+git branch --show-current && git status --short && git stash list | head -3
+
+OUT
+feature-s2-002-ci-changes
+A  docs/ui-ux-standards.md
+?? backend/tests/test_sprint2_integration.py
+2:20 PM
+Those two changes didn't come from the branch. They're uncommitted, and Git carries uncommitted work with you when you check out another branch.
+
+?? backend/tests/test_sprint2_integration.py: the new test file I wrote. It's untracked (never committed), so it doesn't belong to any branch.
+A docs/ui-ux-standards.md: staged but not committed. I didn't create it; it was already staged during this session.
+Git keeps uncommitted work when you switch branches as long as it doesn't conflict with files on the new branch. That's why both still show up on feature-s2-002-ci-changes.
+
+What you can do:
+
+Keep the tests on this branch: commit them here: git add backend/tests/test_sprint2_integration.py && git commit.
+Commit them on a different branch: check out that branch first, then commit. The files move with you.
+Set them aside for now: run git stash -u, which also stashes untracked files. Later, run git stash pop on whichever branch should get them.
+docs/ui-ux-standards.md probably belongs to separate work (a docs change, maybe S1-002). If it shouldn't be part of the S2-002 commit, unstage it with git restore --staged docs/ui-ux-standards.md. The file stays on disk.
+
+Do you want me to commit the test file on this branch?
+
+
+
+want to remove and start fresh branch from most updated main how to
+2:22 PM
+Here's how, depending on whether you want to keep the two uncommitted files.
+
+Option A: set them aside (safe, you can get them back later)
+
+
+git stash -u                         # stashes staged + untracked files
+git checkout main
+git pull origin main                 # get the latest main
+git checkout -b feature/S2-002-integration-tests
+Later, git stash pop brings the files back on whatever branch you're on, and git stash drop deletes them for good.
+
+Option B: delete them permanently
+
+
+git restore --staged docs/ui-ux-standards.md    # unstage
+rm docs/ui-ux-standards.md backend/tests/test_sprint2_integration.py
+git checkout main
+git pull origin main
+git checkout -b feature/S2-002-integration-tests
+One warning about Option B: docs/ui-ux-standards.md wasn't created by me. If you or a teammate wrote it and it isn't committed or pushed anywhere, deleting it loses it for good. Option A is the safer choice if you're unsure.
+
+Run git status at the end; it should say "nothing to commit, working tree clean". The branch name is only a suggestion, so match your team's convention (e.g. feature/S2-002-... like PR #93).
+
+Do you want me to run Option A for you?
+
+
+
+now bring in changes
+Bash Check branch, status, and stash list
+IN
+git branch --show-current && git status --short && echo "--stash--" && git stash list && git log --oneline -3
+
+OUT
+feature/S2-002-integration-tests
+--stash--
+stash@{0}: WIP on feature-s2-002-ci-changes: 083b943 Merge pull request #93 from bdorf04NJIT/feature/S2-015-other-entity-scope
+083b943 Merge pull request #93 from bdorf04NJIT/feature/S2-015-other-entity-scope
+cc9f281 feat: label scope refusals distinctly in the Q&A panel
+7bb8c00 test: add other-entity and other-platform evaluation cases
+12:03 PM
+You're on the fresh branch with a clean tree and one stash, so I'll restore it.
+
+
+
+Bash Restore stashed changes onto new branch
+IN
+git stash pop && git status --short && git stash list
+
+OUT
+On branch feature/S2-002-integration-tests
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	new file:   docs/ui-ux-standards.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	backend/tests/test_sprint2_integration.py
+
+Dropped refs/stash@{0} (699fa61c9dc6dfada74601cf4f58971cb280fc72)
+A  docs/ui-ux-standards.md
+?? backend/tests/test_sprint2_integration.py
+12:03 PM
+Both changes are restored on feature/S2-002-integration-tests, and the stash has been removed. A quick check that the tests still pass on this branch:
+
+
+
+Bash Run new integration tests
+IN
+cd /home/connor/Desktop/My_Files/NJIT/Fall_2026/cs490/CS490-Project-Team-Merge-Conflict/backend && source .venv/bin/activate && python -m pytest tests/test_sprint2_integration.py -q 2>&1 | tail -1
+
+OUT
+11 passed in 0.93s
+12:03 PM
+Your changes are back on feature/S2-002-integration-tests, and all 11 integration tests pass there.
+
+backend/tests/test_sprint2_integration.py is untracked (not added to Git yet).
+docs/ui-ux-standards.md came back staged as well.
+The branch starts at 083b943 (PR #93), the same commit as before. Either your pull brought nothing new, or main hasn't moved since then.
+
+If docs/ui-ux-standards.md isn't part of S2-002, unstage it before committing so it stays out of this PR. The file stays on disk:
+
+
+git restore --staged docs/ui-ux-standards.md
+Should I commit the test file and open the PR?
+
+
+
+ui-ux-standards.md
+explain why ui ux thing is in
+Outcome:
+The project contains automated integration tests covering important Sprint 2 boundaries between application services, persistence, ingestion data, and Q&A orchestration.
+
+Technical Guidance:
+
+Integration tests should focus on boundaries where independently correct components could still fail when combined.
+
+Representative areas include:
+
+    Loading persisted reviews for an AnalysisTarget.
+    Computing an ingestion summary from persisted data.
+    Passing the correct review dataset into the Q&A service.
+    Applying authenticated ownership before review retrieval.
+    Changing the active target and retrieving different data.
+
+The exact testing technology is the team's decision.
+
+Rules: S2-BR-001 through S2-BR-014, S2-BR-022 through S2-BR-030
+ticket\
+Show more
+12:05 PM
+I'll check where that file came from.
+
+
+
+Bash Inspect origin of ui-ux-standards.md
+IN
+cd /home/connor/Desktop/My_Files/NJIT/Fall_2026/cs490/CS490-Project-Team-Merge-Conflict && head -15 docs/ui-ux-standards.md; echo ---; wc -l docs/ui-ux-standards.md docs/ui-ux-context.md; git log --all --oneline -- docs/ui-ux-standards.md | head; git log --all --oneline --diff-filter=D -- docs/ui-ux-standards.md | head; echo ---; diff -q docs/ui-ux-standards.md docs/ui-ux-context.md; grep -rn "ui-ux-standards" --include=*.md . | grep -v node_modules | head; ls -la --time-style=full-iso docs/ui-ux-standards.md
+
+OUT
+# ReviewLens UI/UX Standards
+
+Rules: S1-BR-003, S1-BR-015, S1-BR-025. Stack: React, Tailwind v4, no component library, light theme only.
+
+Follow this for all new UI. Where existing code differs, fix it when you next touch that code. *(Planned)* marks anything not built yet.
+
+## 1. Navigation
+
+- Routes: `/` (sign-in, or the target list once signed in) and `/targets/:id` (workspace). Unknown paths show "Page not found" with a link to `/`. *(Planned)*
+- Header on every signed-in page: logo and "ReviewLens AI" linking to `/` on the left; email and **Log out** on the right. *(Planned)*
+- Back links name the destination: `← Back to your targets`. Use links to go somewhere and buttons to do something.
+- Every screen a user might return to or share has its own URL, and browser Back must work. External links open in a new tab with `rel="noopener noreferrer"`.
+- Don't render protected pages or fetch their data until `/api/me` confirms the session. A `401` returns the user to sign-in with "Your session has expired. Please sign in again." *(Planned)*
+- A missing target and another user's target look identical: same message, a back link, no target details.
+
+---
+   94 docs/ui-ux-standards.md
+  101 docs/ui-ux-context.md
+  195 total
+---
+Files docs/ui-ux-standards.md and docs/ui-ux-context.md differ
+docs/ai-assisted-development.md:19:  - `ui-ux-standards.md` (S1-002)
+-rw-rw-r-- 1 connor connor 7410 2026-11-14 12:03:08.448444619 -0500 docs/ui-ux-standards.md
+Bash Compare with committed UI/UX doc
+IN
+head -5 docs/ui-ux-context.md; git log --oneline -3 -- docs/ui-ux-context.md docs/ai-assisted-development.md; diff docs/ui-ux-standards.md docs/ui-ux-context.md | head -30
+
+OUT
+﻿# ReviewLens UI/UX Context
+
+Team standard for new and changed frontend features. These conventions build on the existing indigo/slate UI; some require follow-up implementation. Use this as the shared reference when developing independently.
+
+## 1. Application navigation
+b17ae93 docs: define shared ReviewLens UI/UX conventions
+a585d8a docs: add AI-assisted development and review guidelines
+1c1
+< # ReviewLens UI/UX Standards
+---
+> ﻿# ReviewLens UI/UX Context
+3c3
+< Rules: S1-BR-003, S1-BR-015, S1-BR-025. Stack: React, Tailwind v4, no component library, light theme only.
+---
+> Team standard for new and changed frontend features. These conventions build on the existing indigo/slate UI; some require follow-up implementation. Use this as the shared reference when developing independently.
+5c5
+< Follow this for all new UI. Where existing code differs, fix it when you next touch that code. *(Planned)* marks anything not built yet.
+---
+> ## 1. Application navigation
+7,14c7,11
+< ## 1. Navigation
+< 
+< - Routes: `/` (sign-in, or the target list once signed in) and `/targets/:id` (workspace). Unknown paths show "Page not found" with a link to `/`. *(Planned)*
+< - Header on every signed-in page: logo and "ReviewLens AI" linking to `/` on the left; email and **Log out** on the right. *(Planned)*
+< - Back links name the destination: `← Back to your targets`. Use links to go somewhere and buttons to do something.
+< - Every screen a user might return to or share has its own URL, and browser Back must work. External links open in a new tab with `rel="noopener noreferrer"`.
+< - Don't render protected pages or fetch their data until `/api/me` confirms the session. A `401` returns the user to sign-in with "Your session has expired. Please sign in again." *(Planned)*
+< - A missing target and another user's target look identical: same message, a back link, no target details.
+---
+> - Use **ReviewLens AI**, **target** (saved business/place), and **workspace** (target details) consistently. Labels use sentence case.
+> - `/` shows the signed-in target list and creation form; `/targets/:id` opens a workspace. Reuse `targetPath` and `usePath` from `frontend/src/hooks/usePath.ts`. Show authentication when signed out.
+> - Keep a shared header with the brand linking to `/`, signed-in identity, and **Log out**. Start workspaces with **Back to your targets**, then the target name and source.
+> - Use real links for navigation and buttons for operations. Preserve direct loads and browser Back/Forward. After an in-app page change, focus the page heading and update the title to `<page or target> | ReviewLens AI`.
+> - Unknown routes show a not-found message and a home link. Missing and inaccessible targets use the same unavailable message and reveal no target data.
+18,31c15,34
+< - **Auth screens:** the existing centered 420px card in `App.tsx`.
+< - **Signed-in pages:** header, then `<main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">`. *(Planned; move off the 420px card before adding Sprint 2 charts.)*
+12:05 PM
+It's there by accident. docs/ui-ux-standards.md has nothing to do with S2-002, and you should leave it out of this PR.
+
+What the file is
+
+It's a UI/UX style guide for S1-002 (it cites rules S1-BR-003, S1-BR-015 and S1-BR-025). That's Sprint 1 frontend documentation, not integration tests.
+The repo already has a committed version of that doc: docs/ui-ux-context.md, from commit b17ae93. This file covers the same topics but is worded differently, so it looks like an earlier or alternate draft.
+It has never been committed on any branch. git log --all finds no history for it, so it only exists on your machine.
+The name probably stuck around because docs/ai-assisted-development.md:19 still points to ui-ux-standards.md, while the file that actually got committed is ui-ux-context.md.
+How it ended up in your changes
+I didn't create it; the only file I wrote is the test file. It wasn't staged when this session started, because the git status then was clean. It showed up staged a little later, before your branch switch, so something outside this session staged it: maybe you, the IDE, or another tool. After that, Git did what it always does: the stash took it along with the test file, and git stash pop brought both back. That's how it reached your new branch.
+
+What to do
+Unstage it so it stays out of this PR (the file stays on disk):
+
+
+git restore --staged docs/ui-ux-standards.md
+Then pick one:
+
+You don't need it: rm docs/ui-ux-standards.md (ui-ux-context.md is already the committed version).
+It has content you want to keep: move it out of the repo, or put it in its own docs PR.
+Either way, the S2-002 commit should contain only backend/tests/test_sprint2_integration.py. Should I unstage it and commit the test file?
+
+
+
+test_sprint2_integration.py
+we dont count ratings that dont have text? how come
+Bash Search tickets/docs for text requirement
+IN
+grep -n -i -E "without text|empty text|no text|review text|rating-only|written review|text and (a )?rating" Sprint1Issues.csv Sprint2Issues.csv docs/*.md | cut -c1-260 | head -20
+
+OUT
+Sprint2Issues.csv:140:- missing review text
+Sprint1Issues.csv:373:1. Written review text.
+Sprint1Issues.csv:393:1. Review text.
+Sprint1Issues.csv:409:2. Missing required review text.
+Sprint1Issues.csv:428:2. Persisted review text and rating match normalized input.
+docs/review-ingestion-source.md:25:4. Query `/api/targets/{id}/reviews` as User A and confirm stored text and ratings.
+Bash Read ticket context around text requirement
+IN
+sed -n 365,412p Sprint1Issues.csv; sed -n 125,147p Sprint2Issues.csv
+
+OUT
+**Rules:** S1-BR-018, S1-BR-019, S1-BR-025",sprint-1,Sprint 1
+S1-020,S1-020 - Extract or Import Review Data,"**Outcome:**
+The application can obtain representative review data from the team's supported review source and identify individual review records.
+
+**Technical Guidance:**
+
+At minimum, the ingestion layer must be capable of obtaining:
+
+1. Written review text.
+2. Rating.
+
+Teams may use scraping, browser automation, a publicly available API, supplied export data, or another practical method consistent with the project requirements.
+
+Important constraints:
+
+1. The team must document its selected ingestion approach.
+2. The application must not silently substitute hard-coded sample reviews for real ingestion.
+3. Automated tests should use deterministic fixtures, saved representative input, mocks, or equivalent isolation rather than depending entirely on a live website.
+4. Teams should isolate source-specific parsing sufficiently that it can be tested independently of the user interface.
+
+**Rules:** S1-BR-019 through S1-BR-021, S1-BR-024",sprint-1,Sprint 1
+S1-021,S1-021 - Normalize Ingested Reviews,"**Outcome:**
+Raw review-source data is transformed into the application's canonical Review representation before persistence.
+
+**Technical Guidance:**
+
+Every successfully normalized Review must contain:
+
+1. Review text.
+2. Rating.
+
+Teams should also preserve useful source metadata when available, such as:
+
+1. Source review identifier.
+2. Reviewer/display name.
+3. Review date.
+4. Review URL.
+5. Source-specific metadata useful for later analysis.
+
+Normalization should handle malformed individual records without corrupting otherwise usable data.
+
+Tests should include representative examples of:
+
+1. Valid review.
+2. Missing required review text.
+3. Missing or invalid rating.
+4. Optional metadata that is absent.
+
+S2-007,S2-007 - Report Skipped or Rejected Review Records,"**Outcome:**
+When ingestion encounters individual records that cannot be processed, the user can determine that those records were not included in the active review dataset.
+
+**Technical Guidance:**
+
+The application does not need to expose raw parser diagnostics to the user.
+
+A reasonable summary may communicate:
+
+1. Number successfully ingested.
+2. Number skipped or rejected.
+3. A concise reason category when useful.
+
+For example:
+
+- missing review text
+- invalid rating
+- malformed source record
+
+The exact level of detail is a team design decision.
+
+The important requirement is that unsuccessful records do not silently count as successfully analyzed data.
+12:19 PM
+That's a requirement from the tickets, not something the tests invented. A rating with no text is treated as an incomplete review, so it's skipped. It doesn't count toward the summary either.
+
+Where the requirement comes from
+
+S1-021 (Normalize Ingested Reviews): "Every successfully normalized Review must contain: 1. Review text. 2. Rating." The test examples it lists include "Missing required review text".
+S2-007: names "missing review text" as an example reason for skipping a record, and adds that "unsuccessful records do not silently count as successfully analyzed data."
+Where the code enforces it
+
+review_normalization.py: normalize_review returns None when the text is blank, so the row is counted as skipped.
+models.py: the reviews table has ck_review_text_not_empty, so the database rejects empty text even if something gets past normalization.
+review_summary.py: the summary and Q&A both read from the same active_reviews query. Skipped rows were never stored, so they can't show up in either.
+Why it makes sense for this product
+
+Q&A only has text to work with. It answers questions using review text as evidence and cites review ids. A review with only a rating gives it nothing to quote.
+The numbers stay consistent. The summary's "N reviews, average X" describes exactly the reviews the assistant can see. If rating-only reviews counted toward the average, the summary would describe data the Q&A can't use.
+The trade-off
+On Google Maps, many reviews have stars and no text. So your average can differ from the rating Google shows for the same place, and the review count will be lower. The ingestion run's skipped_count reports how many records were left out, and S2-007 surfaces that in the UI, so the gap isn't hidden.
+
+What the test checks
+In test_csv_import_flows_into_reviews_summary_and_qa_context, the row ,4 (a 4-star rating with no text) is skipped. That's why the average is 3.5 (from the 5 and the 2) rather than 3.67. The test pins the rule down so nobody changes it by accident.
+
+If the team ever wants rating-only reviews to count toward the stars, that's a product decision. The summary and the Q&A would then describe different datasets, so it would need a spec change and a migration, not a tweak to the test.
+
+
+
+how to run integraion tests
+12:22 PM
+Run these from the backend folder with the virtualenv active:
+
+
+cd backend
+source .venv/bin/activate
+Just the S2-002 integration tests:
+
+
+python -m pytest tests/test_sprint2_integration.py -v
+-v prints each test name with PASSED or FAILED.
+
+One test by name:
+
+
+python -m pytest tests/test_sprint2_integration.py -k switching -v
+-k matches part of a test name, for example ownership, summary or switching.
+
+The whole backend suite (what CI runs):
+
+
+python -m pytest --cov=app
+Locally, tests/test_gemini_fallback.py will fail to load until you install the missing package:
+
+
+pip install -r requirements.txt
+Until then, you can skip that file with --ignore=tests/test_gemini_fallback.py.
+
+You don't need a database, API keys or network access. The tests use a temporary SQLite database and fake Gemini and SerpApi clients, and conftest.py clears any SerpApi keys from your .env during the run.
+
+When I ran it, the result was 11 passed
