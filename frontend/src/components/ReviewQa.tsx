@@ -19,7 +19,20 @@ function evidenceLine({ review_ids, reviews_considered }: QaAnswer): string {
 // No persistent chat history is required; we keep only the latest answer. The active
 // target stays clear because this lives inside the target workspace, which already
 // displays the target name and platform above it.
+// S2-019: isolate each target/session's pending requests and display state.
+// React drops state updates from a previous, unmounted context after a switch.
 export default function ReviewQa({ accessToken, targetId, targetName }: Props) {
+  return (
+    <ReviewQaForContext
+      key={JSON.stringify([targetId, accessToken])}
+      accessToken={accessToken}
+      targetId={targetId}
+      targetName={targetName}
+    />
+  )
+}
+
+function ReviewQaForContext({ accessToken, targetId, targetName }: Props) {
   const [question, setQuestion] = useState('')
   const [asking, setAsking] = useState(false)
   const [answer, setAnswer] = useState<QaAnswer | null>(null)
