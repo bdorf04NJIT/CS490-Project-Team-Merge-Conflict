@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import IngestionStatus from '../components/IngestionStatus'
 import ReviewCsvImport from '../components/ReviewCsvImport'
 import ReviewList from '../components/ReviewList'
-import ReviewQa from '../components/ReviewQa'
+import ReviewQaGate from '../components/ReviewQaGate'
 import ReviewSummary from '../components/ReviewSummary'
 import TargetSwitcher from '../components/TargetSwitcher'
 import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
@@ -250,11 +250,13 @@ export default function TargetWorkspace({ accessToken, targetId, onBack, onSwitc
             <>
               <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-5 shadow-xs">
                 {/* Keyed by target so a switch always starts with an empty question and answer. */}
-                <ReviewQa
+                <ReviewQaGate
                   key={targetId}
                   accessToken={accessToken}
                   targetId={targetId}
                   targetName={target.name}
+                  refreshKey={attempt}
+                  latestIngestionStatus={ingestion.status}
                 />
               </div>
               <ReviewList accessToken={accessToken} targetId={targetId} refreshKey={attempt} />
