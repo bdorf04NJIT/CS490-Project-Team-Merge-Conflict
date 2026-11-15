@@ -90,6 +90,9 @@ on every push to `main`:
 - `frontend`: install, lint, format check, unit tests, build
 - `backend`: install, lint, format check, build (syntax check), unit tests
 
+On pull requests, both jobs also run a changed-code coverage gate. See
+[coverage gate](docs/coverage-gate.md).
+
 If a PR fails on **Format check**, run the format command for that side and push again.
 
 ## Team docs
@@ -101,3 +104,4 @@ If a PR fails on **Format check**, run the format command for that side and push
 - [Local setup guide](docs/local-env-setup-guide.md)
 - [Review ingestion](docs/review-ingestion-source.md)
 - [SerpApi key management](docs/serpapi-key-management.md)
+- [Changed-code coverage gate](docs/coverage-gate.md)
