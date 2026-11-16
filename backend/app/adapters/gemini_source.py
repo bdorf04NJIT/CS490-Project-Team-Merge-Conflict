@@ -23,7 +23,11 @@ FALLBACK_MODELS = (
 
 # Cap how long one request waits on the model. Without this, an overloaded Gemini can
 # leave the request hanging; a bounded deadline fails fast so we can try the next model.
-REQUEST_TIMEOUT_MS = 20000
+# Raised from 20s to 40s: free-tier models that are healthy but briefly slow were measured
+# taking up to ~49s, so a 20s cap turned working calls into 504 DEADLINE_EXCEEDED and
+# burned through the fallback chain. 40s lets a slow-but-working model finish while still
+# bounding the wait.
+REQUEST_TIMEOUT_MS = 40000
 
 # Status codes where trying a different model is worthwhile (transient / capacity).
 # Everything else (429 quota, 404 missing, 400 bad request, 401/403 auth) is not helped
