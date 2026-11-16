@@ -7,6 +7,19 @@ The application supports **one review platform: Google Maps**, with two acquisit
 
 The backend does not fabricate records. Each successful Review contains written text and a 1–5 rating. Invalid individual records are skipped; an import that contains some valid and some invalid records is marked `partial`. A completely unusable file is `failed`. Counts and latest run state come from persisted database records, not Gemini or hardcoded values. Prior valid reviews are not erased if another ingestion fails.
 
+### Skipped and rejected records (S2-007)
+
+Each skipped record is assigned exactly one user-facing reason category. Raw parser diagnostics are never exposed:
+
+| Category | Meaning |
+| --- | --- |
+| `missing_text` | No written review text (blank or absent). |
+| `text_too_long` | Review text longer than 20,000 characters. |
+| `invalid_rating` | Rating missing, non-numeric, or outside 1–5. |
+| `malformed_record` | The source record is not a usable object/row. |
+
+Per-category counts are stored in `ingestion_run_skip_reasons` and returned on every run as `skip_reasons`, e.g. `{"missing_text": 2, "invalid_rating": 1}`. They always sum to `skipped_count`. A run where every record was rejected is `failed`, but it still keeps its `total_count`, `skipped_count`, and `skip_reasons`. The workspace shows the breakdown and states that skipped records are not included in the review dataset. Skipped records are never persisted, so they are never counted by the summary or used by Q&A.
+
 ## Security / deployment
 
 - Only the verified Supabase JWT `sub` determines the owner. The backend checks ownership before external fetch or reading CSV contents. Authenticated non-owners receive 404, not target data.
@@ -15,6 +28,7 @@ The backend does not fabricate records. Each successful Review contains written 
 - CSV file limit: 2 MB and 5,000 rows. API request maximum: 3 MB. Ingestion occurs synchronously for this Sprint 1 baseline.
 - This Sprint 1 implementation does not deduplicate repeat ingestions. Use one import per target for the class demo.
 - `flask --app app init-db` creates missing tables. It is **not** a production migration mechanism; do not use it to revise existing tables.
+- After pulling S2-007, re-run `flask --app app init-db` once against each existing database. It adds the new `ingestion_run_skip_reasons` table (with RLS enabled); without that table, reading ingestion runs fails.
 - Example fixture files in automated tests are synthetic **test fixtures**, not actual customer review evidence for a demo. Use genuine supplied reviews for the demo.
 
 ## Acceptance test order

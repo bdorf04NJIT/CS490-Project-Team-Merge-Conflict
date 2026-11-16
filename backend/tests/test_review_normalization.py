@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.review_normalization import normalize_review, normalize_reviews
+from app.services.review_normalization import classify_review, normalize_review, normalize_reviews
 
 
 def test_serpapi_review_normalization_preserves_metadata():
@@ -58,6 +58,45 @@ def test_partial_import_skips_only_bad_rows():
     assert result.total_count == 4
     assert result.skipped_count == 2
     assert [r.text for r in result.reviews] == ["Great", "Noisy"]
+    assert result.skip_reasons == {"missing_text": 1, "invalid_rating": 1}
+
+
+@pytest.mark.parametrize(
+    ("row", "reason"),
+    [
+        ({"review_text": "", "rating": 5}, "missing_text"),
+        ({"review_text": "   ", "rating": 5}, "missing_text"),
+        ({"rating": 5}, "missing_text"),
+        ({"review_text": "x" * 20001, "rating": 5}, "text_too_long"),
+        ({"review_text": "Good", "rating": None}, "invalid_rating"),
+        ({"review_text": "Good", "rating": 6}, "invalid_rating"),
+        ({"review_text": "Good", "rating": "five"}, "invalid_rating"),
+        (None, "malformed_record"),
+        ("review_text,rating", "malformed_record"),
+    ],
+)
+def test_skipped_record_gets_one_reason_category(row, reason):
+    assert classify_review(row) == (None, reason)
+
+
+def test_skip_reason_counts_always_add_up_to_skipped_count():
+    result = normalize_reviews(
+        [
+            {"review_text": "Fine", "rating": 4},
+            {"review_text": "", "rating": None},  # missing text wins; counted once
+            {"review_text": "", "rating": 3},
+            {"review_text": "Bad rating", "rating": 0},
+            None,
+        ]
+    )
+    assert result.skipped_count == 4
+    assert result.skip_reasons == {"missing_text": 2, "invalid_rating": 1, "malformed_record": 1}
+    assert sum(result.skip_reasons.values()) == result.skipped_count
+
+
+def test_clean_batch_has_no_skip_reasons():
+    result = normalize_reviews([{"review_text": "Fine", "rating": 4}])
+    assert (result.skipped_count, result.skip_reasons) == (0, {})
 
 
 def test_extracted_snippet_fallback():

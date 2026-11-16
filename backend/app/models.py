@@ -1,8 +1,17 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -47,6 +56,32 @@ class IngestionRun(Base):
         CheckConstraint(
             "total_count >= 0 AND imported_count >= 0 AND skipped_count >= 0", name="ck_run_counts"
         ),
+    )
+
+    skip_reasons: Mapped[list["IngestionRunSkipReason"]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="IngestionRunSkipReason.reason"
+    )
+
+
+class IngestionRunSkipReason(Base):
+    """How many records of one run were skipped for one user-facing reason category.
+
+    A separate table (rather than a new ingestion_runs column) lets `flask init-db`
+    add it to existing databases, since init-db only creates missing tables.
+    """
+
+    __tablename__ = "ingestion_run_skip_reasons"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    ingestion_run_id: Mapped[str] = mapped_column(
+        ForeignKey("ingestion_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    reason: Mapped[str] = mapped_column(String(50), nullable=False)
+    count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("ingestion_run_id", "reason", name="uq_run_skip_reason"),
+        CheckConstraint("count > 0", name="ck_skip_reason_count"),
     )
 
 

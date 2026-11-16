@@ -38,7 +38,9 @@ describe('IngestionStatus', () => {
     const { container } = render(<IngestionStatus ingestion={run} />)
     const { box, text } = shown(container)
     expect(text).toContain('Last ingestion partially succeeded')
-    expect(text).toContain("Added 3 new reviews. 2 of 5 records couldn't be used and were skipped.")
+    expect(text).toContain(
+      'Added 3 new reviews. 2 of 5 records were skipped and not included in the review dataset.',
+    )
     expect(box.className).toContain('bg-amber-50')
   })
 
@@ -104,5 +106,49 @@ describe('IngestionStatus', () => {
     const { box, text } = shown(container)
     expect(text).toContain('Last ingestion: queued')
     expect(box.className).toContain('bg-slate-50')
+  })
+
+  it('breaks skipped records down by reason category', () => {
+    const run = {
+      ...RUN,
+      status: 'partial',
+      imported_count: 2,
+      skipped_count: 3,
+      skip_reasons: { invalid_rating: 1, missing_text: 2 },
+    }
+    const { text } = shown(render(<IngestionStatus ingestion={run} />).container)
+    expect(text).toContain(
+      '3 of 5 records were skipped (2 missing review text, 1 missing or invalid rating) ' +
+        'and not included in the review dataset.',
+    )
+  })
+
+  it('still reports how many records were rejected when a run fails outright', () => {
+    const run = {
+      ...RUN,
+      status: 'failed',
+      total_count: 2,
+      imported_count: 0,
+      skipped_count: 2,
+      skip_reasons: { malformed_record: 1, text_too_long: 1 },
+      message: 'No usable written reviews with ratings from 1 to 5 were found.',
+    }
+    const { text } = shown(render(<IngestionStatus ingestion={run} />).container)
+    expect(text).toContain(
+      '2 of 2 records were skipped (1 review text too long, 1 malformed source record) ' +
+        'and not included in the review dataset. No reviews were added by this attempt.',
+    )
+  })
+
+  it('ignores malformed reason data instead of showing it', () => {
+    const run = {
+      ...RUN,
+      status: 'partial',
+      imported_count: 4,
+      skipped_count: 1,
+      skip_reasons: { missing_text: -1, invalid_rating: 'x' } as unknown as Record<string, number>,
+    }
+    const { text } = shown(render(<IngestionStatus ingestion={run} />).container)
+    expect(text).toContain('1 of 5 records was skipped and not included in the review dataset.')
   })
 })

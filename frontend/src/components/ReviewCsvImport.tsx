@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { skippedSentence } from '../lib/skipReasons'
 
 // onFinished runs after any attempt the server answered, so the workspace can reload the
 // persisted ingestion status (failed imports are recorded as failed runs too).
@@ -8,6 +9,7 @@ type ImportRun = {
   status: string
   imported_count: number
   skipped_count: number
+  skip_reasons?: Record<string, number>
 }
 
 export default function ReviewCsvImport({ accessToken, targetId, onFinished }: Props) {
@@ -58,9 +60,8 @@ export default function ReviewCsvImport({ accessToken, targetId, onFinished }: P
       }
       const data: { run: ImportRun } = await response.json()
       setPartial(data.run.status === 'partial')
-      setSummary(
-        `Imported ${data.run.imported_count} reviews (${data.run.skipped_count} skipped). Status: ${data.run.status}.`,
-      )
+      const skipped = skippedSentence(data.run.skipped_count, data.run.skip_reasons)
+      setSummary(`Imported ${data.run.imported_count} reviews.${skipped ? ` ${skipped}` : ''}`)
       form.reset()
       onFinished()
     } catch {

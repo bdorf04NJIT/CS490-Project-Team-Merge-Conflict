@@ -34,6 +34,9 @@ def _complete_batch(engine, *, owner_id, target_id, batch):
             target_id=target_id,
             source_kind=batch.source_kind,
             message=message,
+            total_count=normalized.total_count,
+            skipped_count=normalized.skipped_count,
+            skip_reasons=normalized.skip_reasons,
         )
         raise IngestionFailed(message)
     run = persist_reviews(
@@ -43,6 +46,7 @@ def _complete_batch(engine, *, owner_id, target_id, batch):
         source_kind=batch.source_kind,
         reviews=[asdict(review) for review in normalized.reviews],
         skipped_count=normalized.skipped_count,
+        skip_reasons=normalized.skip_reasons,
     )
     return run
 
@@ -90,6 +94,7 @@ def start_ingestion(engine, review_source, *, owner_id, target_id, payload):
         "run_status": run["status"],
         "imported_count": run["imported_count"],
         "skipped_count": run["skipped_count"],
+        "skip_reasons": run["skip_reasons"],
     }
 
 
