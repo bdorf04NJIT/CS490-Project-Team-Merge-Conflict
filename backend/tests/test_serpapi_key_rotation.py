@@ -184,6 +184,29 @@ def test_extra_sort_failure_keeps_reviews_already_collected():
     assert [r["review_id"] for r in result.rows] == ["r1", "r2", "r3"]
 
 
+def test_app_does_not_sample_by_rating(tmp_path, monkeypatch):
+    # Rating sorts return the worst/best reviews first, which skewed a 4.6-star place
+    # to a 3.2 average. The app must only widen the sample in rating-neutral ways.
+    from app import create_app
+    from app.adapters.serpapi_source import REPRESENTATIVE_EXTRA_SORTS
+
+    monkeypatch.setenv("SERPAPI_API_KEYS", "")
+    monkeypatch.setenv("SERPAPI_API_KEY", "fake-key-a")
+    monkeypatch.setenv("SERPAPI_MAX_PAGES", "1")
+    app = create_app(
+        {
+            "TESTING": True,
+            "JWT_SECRET": "test-secret-at-least-32-bytes-long!!",
+            "SUPABASE_URL": "https://test.supabase.co",
+            "DATABASE_URL": f"sqlite:///{tmp_path / 'test.db'}",
+        }
+    )
+    sorts = app.extensions["review_source"]._extra_sorts
+    assert sorts == REPRESENTATIVE_EXTRA_SORTS
+    assert not {"ratingLow", "ratingHigh"} & set(sorts)
+    app.extensions["database"].dispose()
+
+
 def test_topics_top_up_until_minimum_most_mentioned_first():
     calls = []
 

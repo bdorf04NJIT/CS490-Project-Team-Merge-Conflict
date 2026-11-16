@@ -7,7 +7,7 @@ from flask import Flask
 
 from .adapters.gemini_source import GeminiReviewAnswerer, UnconfiguredGemini
 from .adapters.review_source import UnconfiguredReviewSource
-from .adapters.serpapi_source import SerpApiGoogleMapsSource
+from .adapters.serpapi_source import REPRESENTATIVE_EXTRA_SORTS, SerpApiGoogleMapsSource
 from .database import init_database
 from .errors import register_error_handlers
 from .routes import bp
@@ -48,7 +48,7 @@ def create_app(config=None):
             keys,
             max_pages=max_pages,
             quota_preflight=True,
-            extra_sorts=("newestFirst", "ratingHigh", "ratingLow"),
+            extra_sorts=REPRESENTATIVE_EXTRA_SORTS,
             min_reviews=20,
             max_topics=4,
         )

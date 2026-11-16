@@ -112,6 +112,12 @@ export default function ReviewSummary({ accessToken, targetId, refreshKey, targe
             </dd>
           </div>
         </dl>
+        {/* The average covers the reviews ingested here, a sample of the place's
+            reviews, so it can differ from the platform's overall star rating. */}
+        <p className="mt-2 text-xs text-slate-500">
+          Based on the {count} {count === 1 ? 'review' : 'reviews'} ingested here, not the
+          platform&apos;s overall rating.
+        </p>
         <h5 id="distribution-heading" className="mt-4 font-medium text-slate-700">
           Rating distribution
         </h5>

@@ -50,6 +50,16 @@ test('shows the exact count, average and distribution from the persisted summary
   })
 })
 
+test('says the average covers only the ingested reviews', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, FIXTURE)))
+  render(<ReviewSummary accessToken="tok" targetId="t1" refreshKey={0} />)
+  expect(
+    await screen.findByText(
+      "Based on the 5 reviews ingested here, not the platform's overall rating.",
+    ),
+  ).toBeTruthy()
+})
+
 test('shows a two-decimal average as returned by the backend', async () => {
   const body = {
     ...FIXTURE,

@@ -59,6 +59,13 @@ def _renewal_wait(account):
     return 24 * 3600
 
 
+# Extra sort orders used to widen a short first page. Rating sorts are left out on
+# purpose: "ratingLow"/"ratingHigh" return the worst or best reviews first, which
+# skewed a 4.6-star place to a 3.2 average in our dataset. Newest-first plus the
+# default order and the place's top topics keep the sample close to the real mix.
+REPRESENTATIVE_EXTRA_SORTS = ("newestFirst",)
+
+
 class SerpApiGoogleMapsSource:
     def __init__(
         self,
