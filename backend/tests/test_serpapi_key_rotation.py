@@ -142,7 +142,52 @@ def test_bounded_pagination_uses_provider_token_and_preserves_real_rows():
     result = source.submit(target_id="private-target", source_url=PLACE)
     assert [r["review_id"] for r in result.rows] == ["review-1", "review-2", "review-3"]
     assert [q.get("next_page_token") for q in calls] == [None, "page-1", "page-2"]
+    # The first page ignores "num"; follow-up pages ask for the provider's maximum.
+    assert [q.get("num") for q in calls] == [None, "20", "20"]
     assert all("target_id" not in q for q in calls)
+
+
+def test_extra_passes_are_skipped_once_pagination_reaches_the_minimum():
+    calls = []
+
+    def fake(url):
+        values = query(url)
+        calls.append(values.get("sort_by"))
+        page = len(calls)
+        ids = [f"p{page}-{i}" for i in range(10 if page == 1 else 20)]
+        return json.dumps(
+            {
+                "reviews": [{"review_id": i, "snippet": i, "rating": 4} for i in ids],
+                "serpapi_pagination": {"next_page_token": f"page-{page}"},
+            }
+        ).encode()
+
+    source = SerpApiGoogleMapsSource(
+        "fake-key-a",
+        transport=fake,
+        max_pages=3,
+        extra_sorts=("newestFirst",),
+        min_reviews=20,
+        max_topics=4,
+    )
+    result = source.submit(target_id="t", source_url=PLACE)
+    assert len(result.rows) == 50
+    assert calls == [None, None, None]
+
+
+def test_extra_sorts_still_top_up_a_short_dataset():
+    calls = []
+
+    def fake(url):
+        calls.append(query(url).get("sort_by"))
+        return sorted_pages(url)
+
+    source = SerpApiGoogleMapsSource(
+        "fake-key-a", transport=fake, extra_sorts=("newestFirst",), min_reviews=20
+    )
+    result = source.submit(target_id="t", source_url=PLACE)
+    assert [r["review_id"] for r in result.rows] == ["r1", "r2", "r3", "r4", "r5"]
+    assert calls == [None, "newestFirst"]
 
 
 def sorted_pages(url):

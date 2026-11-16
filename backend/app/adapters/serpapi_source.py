@@ -65,6 +65,11 @@ def _renewal_wait(account):
 # default order and the place's top topics keep the sample close to the real mix.
 REPRESENTATIVE_EXTRA_SORTS = ("newestFirst",)
 
+# SerpApi returns ~10 reviews on the first page and ignores "num" there. Pages reached
+# through next_page_token accept "num" up to 20, so asking for 20 fills a run in far
+# fewer search credits than many short default pages.
+FOLLOW_UP_PAGE_SIZE = 20
+
 
 class SerpApiGoogleMapsSource:
     def __init__(
@@ -204,7 +209,10 @@ class SerpApiGoogleMapsSource:
         extra_passes = [{"sort_by": sort} for sort in self._extra_sorts]
         extra_passes += [{"topic_id": t} for t in _top_topic_ids(topics, self._max_topics)]
         for params in extra_passes:
-            if "topic_id" in params and len(reviews) >= self._min_reviews:
+            # Extra passes only top up a short dataset. Once pagination has collected
+            # enough, skip them so they don't spend credits or tilt the sample.
+            enough = len(reviews) >= self._min_reviews
+            if enough and ("topic_id" in params or self._min_reviews):
                 break
             try:
                 extra, _ = self._collect(locator, **params)
@@ -223,6 +231,7 @@ class SerpApiGoogleMapsSource:
             params = {"engine": "google_maps_reviews", "hl": "en", **locator, **extra_params}
             if token:
                 params["next_page_token"] = token
+                params["num"] = FOLLOW_UP_PAGE_SIZE
             data = self._search(params)
             reviews.extend(data["reviews"])
             if not topics and isinstance(data.get("topics"), list):
