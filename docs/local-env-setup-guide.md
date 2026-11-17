@@ -61,7 +61,7 @@ committed. Get the real values from a teammate privately, not in a commit, issue
 
 | Copy this | To this | Values |
 |---|---|---|
-| `backend/.env.example` | `backend/.env` | `SUPABASE_URL`, `DATABASE_URL`, and optionally `SERPAPI_API_KEY` |
+| `backend/.env.example` | `backend/.env` | `SUPABASE_URL`, `DATABASE_URL`, `GEMINI_API_KEY`, and optionally `SERPAPI_API_KEY` |
 | `frontend/.env.example` | `frontend/.env.local` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` |
 
 Windows PowerShell, from the repo root:
@@ -85,6 +85,10 @@ Notes on the values:
 - `SERPAPI_API_KEY` is only needed for **Start ingestion** (pulling reviews from Google
   Maps). Without it, CSV upload still works. See
   [SerpApi key management](serpapi-key-management.md) for the other SerpApi settings.
+- `GEMINI_API_KEY` is needed for **Ask about these reviews**. Get one at
+  https://aistudio.google.com/apikey. Without it, the app still runs, but asking a question
+  returns an error. Leave `GEMINI_MODEL` empty unless you want to pin one model. Empty means
+  the backend tries a few Gemini Flash models in order and falls back if one is busy.
 - Only the Supabase **publishable** key goes in the frontend. Anything starting with
   `VITE_` is bundled into browser code, so never put a database password or private key in
   a `VITE_` variable.
@@ -165,6 +169,7 @@ To fix formatting automatically: `npm run format` in `frontend/`, or `ruff forma
 | Browser shows `Set Supabase configuration in frontend/.env.local` | Missing frontend env file | Create `frontend/.env.local` (step 5) |
 | Vite logs `http proxy error` for `/api` | Backend isn't running | Start the backend (step 7) |
 | **Start ingestion** says ingestion is unavailable | No SerpApi key | Add `SERPAPI_API_KEY` to `backend/.env` and restart the backend, or use CSV upload |
+| Asking a question always says "The review assistant isn't available right now" | No Gemini key | Add `GEMINI_API_KEY` to `backend/.env` and restart the backend |
 | `No module named ruff` or `prettier: not found` | Tools added after your last install | `pip install -r requirements.txt` in `backend/`, `npm ci` in `frontend/` |
 | CI fails on **Format check** | Code isn't formatted | Run the format command (step 8) and push again |
 | `package-lock.json` changes a lot after installing a package | Older npm rewrote it | `npm install -g npm@11`, restore the lockfile, reinstall |
