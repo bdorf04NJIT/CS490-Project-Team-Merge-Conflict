@@ -82,7 +82,7 @@ test('shows an empty state when no reviews are persisted', async () => {
   }
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, body)))
   render(<ReviewSummary accessToken="tok" targetId="t1" refreshKey={0} />)
-  expect(await screen.findByText('No reviews yet. Start ingestion or import a CSV.')).toBeTruthy()
+  expect(await screen.findByText('No reviews yet. Start ingestion to add reviews.')).toBeTruthy()
   expect(screen.queryByText('Average rating')).toBeNull()
 })
 

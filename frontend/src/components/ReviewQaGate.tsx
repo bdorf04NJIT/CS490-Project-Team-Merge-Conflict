@@ -80,7 +80,7 @@ export default function ReviewQaGate({
           {latestIngestionStatus === 'failed'
             ? 'The latest ingestion failed, and this target has no saved reviews.'
             : 'This target has no saved reviews yet.'}{' '}
-          Complete ingestion or import a CSV before asking ReviewLens questions.
+          Complete ingestion before asking ReviewLens questions.
         </p>
       </section>
     )

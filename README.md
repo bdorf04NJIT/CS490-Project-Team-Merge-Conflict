@@ -2,7 +2,7 @@
 
 ReviewLens is a multi-user web app for review analysis. An analyst creates a target (a
 business on Google Maps), brings in its reviews, and asks questions answered only from those
-reviews. Reviews come from Google Maps through SerpApi, or from a CSV the user uploads. Each
+reviews. Reviews come from Google Maps through SerpApi. Each
 user can see only their own targets and reviews.
 
 CS 490 capstone, team Merge Conflict.
@@ -26,8 +26,8 @@ goes to `http://127.0.0.1:5000`), so no API URL is hard coded.
 - Python 3.12 or newer
 - Node.js 22 LTS (22.22 or newer) and npm
 - Access to the team's Supabase project, as well as dev values.
-- Optional: a SerpApi key, for pulling reviews straight from Google Maps. Get one at
-  https://serpapi.com/manage-api-key. CSV upload works without it.
+- A SerpApi key, for pulling reviews straight from Google Maps. Get one at
+  https://serpapi.com/manage-api-key. Without it, you can't add reviews.
 - A Google Gemini API key, for asking questions about the reviews. Get one at
   https://aistudio.google.com/apikey. The app runs without it, but asking a question returns
   an error.
@@ -37,7 +37,7 @@ goes to `http://127.0.0.1:5000`), so no API URL is hard coded.
 1. Set up env files. Copy `backend/.env.example` to `backend/.env` and
    `frontend/.env.example` to `frontend/.env.local`, then fill in the values shared
    privately by the team. Add your Gemini key as `GEMINI_API_KEY` in `backend/.env`, and
-   your SerpApi key as `SERPAPI_API_KEY` if you have one. Never commit these files.
+   your SerpApi key as `SERPAPI_API_KEY`. Never commit these files.
 2. Start the backend in one terminal. Follow [backend/README.md](backend/README.md).
 3. Start the frontend in a second terminal. Follow [frontend/README.md](frontend/README.md).
 4. Open the URL Vite prints (usually http://localhost:5173) and sign in.
@@ -50,10 +50,8 @@ every step, including Mac and Linux commands and common errors.
 1. Sign up or sign in.
 2. Create a target with a name and its Google Maps link. Copy the full link from the
    address bar after opening the place, not the short `maps.app.goo.gl` link from Share.
-3. Open the target's workspace and add reviews:
-   - **Start ingestion** pulls reviews from Google Maps. Needs `SERPAPI_API_KEY`.
-   - **Import CSV reviews** uploads your own export. Needs `review_text` and `rating`
-     columns.
+3. Open the target's workspace and click **Start ingestion** to pull its reviews from Google
+   Maps. Needs `SERPAPI_API_KEY`.
 4. The workspace shows the saved result of the last ingestion: succeeded (green), partially
    succeeded with some records skipped (amber), or failed with the reason (red). It includes
    how many new reviews were added and when the run finished, and it reloads after every
@@ -72,7 +70,7 @@ every step, including Mac and Linux commands and common errors.
      business, or Yelp and other review sites), it's labeled **Outside the scope of these
      reviews** and declined.
    - If the target has no saved reviews yet, or its last ingestion failed, the question box
-     is hidden and the workspace says to finish ingestion or import a CSV first.
+     is hidden and the workspace says to finish ingestion first.
 7. Use **Switch target** to move to another one of your targets. The heading, summary, and
    Q&A all change to the new target, and the next question only uses its reviews.
 

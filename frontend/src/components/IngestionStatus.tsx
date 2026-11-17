@@ -65,7 +65,7 @@ export default function IngestionStatus({ ingestion }: Props) {
   if (!ingestion) {
     return (
       <p className="mt-0.5 text-slate-600">
-        No reviews have been ingested yet. Start ingestion or import a CSV.
+        No reviews have been ingested yet. Start ingestion to add reviews.
       </p>
     )
   }

@@ -28,7 +28,7 @@ test('failed ingestion with no reviews shows clear empty state and cannot ask Ge
   render(<ReviewQaGate {...BASE} latestIngestionStatus="failed" />)
 
   expect(await screen.findByText(/latest ingestion failed.*no saved reviews/i)).toBeTruthy()
-  expect(screen.getByText(/Complete ingestion or import a CSV/)).toBeTruthy()
+  expect(screen.getByText(/Complete ingestion before asking/)).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Ask' })).toBeNull()
   expect(fetchMock).toHaveBeenCalledWith('/api/targets/a/summary', {
     headers: { Authorization: 'Bearer tok' },
