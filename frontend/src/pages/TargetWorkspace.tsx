@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import IngestionStatus from '../components/IngestionStatus'
-import ReviewCsvImport from '../components/ReviewCsvImport'
 import ReviewList from '../components/ReviewList'
 import ReviewQaGate from '../components/ReviewQaGate'
 import ReviewSummary from '../components/ReviewSummary'
@@ -234,11 +233,6 @@ export default function TargetWorkspace({ accessToken, targetId, onBack, onSwitc
               </p>
             )}
           </section>
-          <ReviewCsvImport
-            accessToken={accessToken}
-            targetId={targetId}
-            onFinished={() => setAttempt((n) => n + 1)}
-          />
           {/* The review summary belongs with the data, so it sits under ingestion. */}
           {ingestion && (
             <ReviewSummary
@@ -271,8 +265,7 @@ export default function TargetWorkspace({ accessToken, targetId, onBack, onSwitc
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
               <h4 className="font-semibold text-slate-700">Ask about these reviews</h4>
               <p className="mt-1">
-                Ingest reviews or import a CSV to start asking ReviewLens questions about this
-                target.
+                Ingest reviews to start asking ReviewLens questions about this target.
               </p>
             </div>
           )}

@@ -87,7 +87,7 @@ export default function ReviewSummary({ accessToken, targetId, refreshKey, targe
       <section aria-labelledby="summary-heading" className="mt-6">
         {heading}
         <p className="mt-1 text-sm text-slate-500">
-          No reviews yet. Start ingestion or import a CSV.
+          No reviews yet. Start ingestion to add reviews.
         </p>
       </section>
     )

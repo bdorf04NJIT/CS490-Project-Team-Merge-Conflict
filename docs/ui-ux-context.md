@@ -30,7 +30,7 @@ Team standard for new and changed frontend features. These conventions build on 
 - Mark fields `(required)` or `(optional)` and set the appropriate required attribute. Placeholders provide examples rather than labels.
 - Text controls use `w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-base text-slate-900 shadow-xs`. Focus uses an indigo-500 border and `ring-3 ring-indigo-500/15`.
 - Use appropriate input types/autocomplete. Trim names and URLs, never passwords. Preserve values after failures; reset only after confirmed success or an explicit reset.
-- Explain constraints before submission: full Google Maps place URL; CSV encoding, required columns, and limits from the [ingestion contract](review-ingestion-source.md).
+- Explain constraints before submission: full Google Maps place URL and any limits from the [ingestion contract](review-ingestion-source.md).
 - Use real forms with Enter-to-submit. Set button types explicitly so secondary actions do not submit.
 
 ## 4. Validation and errors
@@ -49,12 +49,11 @@ Team standard for new and changed frontend features. These conventions build on 
 | Submitting/processing | Use "Creating...", "Importing...", or "Starting ingestion..."; prevent duplicate submissions, disable conflicting controls, and set `aria-busy` on the affected region. Keep unrelated navigation available. |
 | Success | Announce confirmed results once with `role="status"`, refresh affected data, and offer the next action when useful. |
 | Partial import | Show actual imported/skipped counts with an amber notice; distinguish partial success from total failure. |
-| Empty | Explain the absence and next step: "No reviews yet. Start ingestion or import a CSV." |
+| Empty | Explain the absence and next step: "No reviews yet. Start ingestion to add reviews." |
 | Failure | End the busy state, show recovery guidance, and retain valid existing reviews where access remains authorized. |
 
 - Notices share the error panel's radius/padding: success uses green-50/green-800/green-200; information indigo-50/indigo-900/indigo-100; warning amber-50/amber-900/amber-200 (background/text/border).
 - Keep feedback until another attempt or navigation. A spinner supplements text; never invent progress percentages, counts, or completion. Distinguish an accepted request from completed ingestion.
-- Identify CSV imports as supplied data and live retrieval as fetched data. Explain near ingestion controls that repeated imports currently can duplicate reviews.
 
 ## 6. Buttons and actions
 
@@ -64,7 +63,7 @@ Team standard for new and changed frontend features. These conventions build on 
 | Secondary | White, slate-300 border, slate-700 text; hover slate-50 | Cancel or alternative action |
 | Text/link | Indigo-600; underline on hover/focus | Navigation or low-emphasis action |
 
-- Use `rounded-lg px-4 py-3 text-sm font-semibold`, minimum 44px height/hit area, and verb/object labels: **Create target**, **Import CSV reviews**.
+- Use `rounded-lg px-4 py-3 text-sm font-semibold`, minimum 44px height/hit area, and verb/object labels: **Create target**, **Start ingestion**.
 - Allow one primary action per task panel. Group actions with a 12px gap, secondary before primary. Stack full-width on small screens; use natural widths on larger screens. Authentication actions stay full-width.
 - Buttons/links need a visible 2px indigo-600 focus outline with 4px offset. Disabled controls use 60% opacity; use a wait cursor only during processing and explain unmet prerequisites nearby.
 
@@ -87,7 +86,7 @@ Use left-aligned content and short, sentence-case instructions. Pair status colo
 
 ## 8. Reusable components
 
-- Check `frontend/src/components` first. Reuse `CreateTargetForm`, `TargetList`, and `ReviewCsvImport` for their workflows. Keep pages in `pages`, requests in `api`, and reusable state behavior in `hooks`.
+- Check `frontend/src/components` first. Reuse `CreateTargetForm` and `TargetList` for their workflows. Keep pages in `pages`, requests in `api`, and reusable state behavior in `hooks`.
 - When extracting shared UI, establish one `Button` (variant/busy/disabled), `FormField` (label/help/error), `Alert` (tone/announcement), and page shell. These are expected contracts, not existing exports.
 - Shared controls own styling and accessibility wiring and forward native attributes/focus refs as needed. Feature components own requests, permissions, and messages.
 - Extend shared components/tokens instead of duplicating styles. Update this reference in the same PR when adding a convention.
