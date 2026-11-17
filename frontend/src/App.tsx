@@ -41,19 +41,34 @@ function App() {
   useEffect(() => {
     if (!session) return
     const controller = new AbortController()
-    void fetch('/api/me', {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
+
+    // Verify the session against the backend. A 401 usually means the access token
+    // just expired; Supabase can mint a fresh one, so refresh and retry once before
+    // treating the session as dead. Only a failed refresh is a real error worth showing.
+    async function verify(token: string): Promise<Response> {
+      return fetch('/api/me', {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      })
+    }
+
+    void (async () => {
+      try {
+        let response = await verify(session.access_token)
+        if (response.status === 401) {
+          const { data, error } = await supabase.auth.refreshSession()
+          if (error || !data.session) throw new Error('session refresh failed')
+          response = await verify(data.session.access_token)
+        }
         if (!response.ok) throw new Error('Unable to verify your session with ReviewLens AI.')
         const body: { user_id: string } = await response.json()
         if (!controller.signal.aborted) setIdentity(body.user_id)
-      })
-      .catch(() => {
+      } catch {
         if (!controller.signal.aborted)
           setError('Unable to verify your session with ReviewLens AI. Please try signing in again.')
-      })
+      }
+    })()
+
     return () => controller.abort()
   }, [session])
 

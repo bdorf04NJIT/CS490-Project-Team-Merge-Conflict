@@ -9,6 +9,7 @@ const auth = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
   signOut: vi.fn(),
   signUp: vi.fn(),
+  refreshSession: vi.fn(),
 }))
 vi.mock('./lib/supabase', () => ({ supabase: { auth } }))
 const session = {
@@ -123,6 +124,48 @@ test('failed login stays signed out and displays an error', async () => {
 
 test('backend rejection does not display a verified identity', async () => {
   vi.mocked(fetch).mockResolvedValue({ ok: false } as Response)
+  auth.onAuthStateChange.mockImplementation((callback) => {
+    callback('INITIAL_SESSION', session)
+    return { data: { subscription: { unsubscribe: vi.fn() } } }
+  })
+  render(<App />)
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Unable to verify'))
+  expect(screen.queryByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeNull()
+})
+
+test('a 401 refreshes the token and retries instead of showing an error', async () => {
+  // First /api/me rejects an expired token; after refresh, the retry succeeds.
+  vi.mocked(fetch).mockImplementation(async (url: string, init?: RequestInit) => {
+    const authHeader = (init?.headers as Record<string, string>)?.Authorization
+    if (url === '/api/me' && authHeader === 'Bearer provider-token') {
+      return { ok: false, status: 401 } as Response
+    }
+    return {
+      ok: true,
+      json: async () => (url === '/api/targets' ? { targets: [] } : { user_id: 'verified-user' }),
+    } as Response
+  })
+  auth.refreshSession.mockResolvedValue({
+    data: { session: { ...session, access_token: 'fresh-token' } },
+    error: null,
+  })
+  auth.onAuthStateChange.mockImplementation((callback) => {
+    callback('INITIAL_SESSION', session)
+    return { data: { subscription: { unsubscribe: vi.fn() } } }
+  })
+  render(<App />)
+  expect(await screen.findByRole('heading', { name: 'Welcome to ReviewLens AI' })).toBeTruthy()
+  expect(auth.refreshSession).toHaveBeenCalled()
+  expect(fetch).toHaveBeenCalledWith(
+    '/api/me',
+    expect.objectContaining({ headers: { Authorization: 'Bearer fresh-token' } }),
+  )
+  expect(screen.queryByRole('alert')).toBeNull()
+})
+
+test('a 401 with a failed refresh shows the session error', async () => {
+  vi.mocked(fetch).mockResolvedValue({ ok: false, status: 401 } as Response)
+  auth.refreshSession.mockResolvedValue({ data: { session: null }, error: new Error('expired') })
   auth.onAuthStateChange.mockImplementation((callback) => {
     callback('INITIAL_SESSION', session)
     return { data: { subscription: { unsubscribe: vi.fn() } } }
