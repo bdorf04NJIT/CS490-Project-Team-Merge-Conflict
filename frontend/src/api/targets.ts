@@ -167,6 +167,42 @@ export async function renameTarget(
   return response.json()
 }
 
+const SAVE_AS_MESSAGES: Record<number, string> = {
+  400: 'Check the new analysis name and try again.',
+  401: 'Your session has expired. Please sign in again.',
+  404: "This analysis doesn't exist or you don't have access to it.",
+}
+const SAVE_AS_FALLBACK = 'Unable to copy this analysis right now. Please try again.'
+
+// Save As (S3-003): create a separate analysis from an owned source, with a new name.
+// The backend copies the source's current persisted review dataset into a new identity;
+// the copy is independent of the source afterwards.
+export async function saveAsTarget(
+  accessToken: string,
+  id: string,
+  name: string,
+): Promise<AnalysisTarget> {
+  let response: Response
+  try {
+    response = await fetch(`/api/targets/${encodeURIComponent(id)}/copies`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+  } catch {
+    throw new TargetError(0, 'Unable to connect. Check your connection and try again.')
+  }
+  if (!response.ok) {
+    const fields = response.status === 400 ? await readFieldErrors(response) : {}
+    throw new TargetError(
+      response.status,
+      SAVE_AS_MESSAGES[response.status] ?? SAVE_AS_FALLBACK,
+      fields,
+    )
+  }
+  return response.json()
+}
+
 export type Review = {
   id: string
   text: string

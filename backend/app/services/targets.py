@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..errors import NotFound, ValidationError
-from ..models import AnalysisTarget
+from ..models import AnalysisTarget, IngestionRun, Review
 from .review_storage import latest_run
 
 PLATFORM = "google_maps"
@@ -206,3 +206,80 @@ def update_target(engine, *, owner_id, target_id, payload):
             setattr(row, field, value)
         session.flush()
         return _summary(row)
+
+
+# S3-003: fields of a Review that are part of the "current saved state" we copy.
+# id, target_id, and ingestion_run_id are deliberately omitted: the copy gets its
+# own identity, its own target, and its own ingestion run (new rows, not shared).
+_REVIEW_COPY_FIELDS = (
+    "text",
+    "rating",
+    "source_review_id",
+    "reviewer_name",
+    "review_date",
+    "review_url",
+    "source_name",
+)
+
+
+def validate_new_name(name):
+    """Validate a human-readable analysis name, as used by Save As (S3-003)."""
+    value = name.strip() if isinstance(name, str) else ""
+    if not value:
+        raise ValidationError(
+            "Some target details need fixing.", fields={"name": MESSAGES["name_missing"]}
+        )
+    if len(value) > MAX_NAME:
+        raise ValidationError(
+            "Some target details need fixing.", fields={"name": MESSAGES["name_long"]}
+        )
+    return value
+
+
+def save_as_target(engine, *, owner_id, target_id, name):
+    """Create a separate analysis from an owned source analysis (S3-003).
+
+    The copy receives a new identity and begins with the source's current persisted
+    review dataset. Reviews are copied as new rows anchored to a fresh ingestion run
+    on the copy, so the copy is fully independent of the source: renaming, deleting,
+    or re-ingesting it never touches the original. Q&A history is not persisted yet
+    (S3-006), so there is nothing to copy; this will be revisited when it exists.
+    """
+    new_name = validate_new_name(name)
+    with Session(engine) as session, session.begin():
+        source = find_owned_target(session, owner_id=owner_id, target_id=target_id)
+
+        copy = AnalysisTarget(
+            owner_id=owner_id,
+            name=new_name,
+            platform=source.platform,
+            source_url=source.source_url,
+        )
+        session.add(copy)
+        session.flush()
+
+        source_reviews = session.scalars(select(Review).where(Review.target_id == source.id)).all()
+
+        if source_reviews:
+            run = IngestionRun(
+                target_id=copy.id,
+                source_kind=source.platform,
+                status="succeeded",
+                total_count=len(source_reviews),
+                imported_count=len(source_reviews),
+                skipped_count=0,
+                message="Copied from the source analysis.",
+            )
+            session.add(run)
+            session.flush()
+            for review in source_reviews:
+                session.add(
+                    Review(
+                        target_id=copy.id,
+                        ingestion_run_id=run.id,
+                        **{field: getattr(review, field) for field in _REVIEW_COPY_FIELDS},
+                    )
+                )
+            session.flush()
+
+        return _summary(copy)
