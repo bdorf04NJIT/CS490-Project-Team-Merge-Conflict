@@ -37,6 +37,32 @@ function open(sourceName = 'Joe Coffee') {
   )
 }
 
+test('closes when clicking outside the open editor', async () => {
+  render(
+    <div>
+      <button type="button">outside</button>
+      <SaveAsAnalysis
+        accessToken="user-token"
+        targetId="target-1"
+        sourceName="Joe Coffee"
+        onSaved={onSaved}
+      />
+    </div>,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Save as' }))
+  expect(screen.getByLabelText('New analysis name')).toBeTruthy()
+  await userEvent.click(screen.getByRole('button', { name: 'outside' }))
+  expect(screen.queryByLabelText('New analysis name')).toBeNull()
+  expect(fetch).not.toHaveBeenCalled()
+})
+
+test('keeps the Save as trigger visible while the editor is open below it', async () => {
+  open()
+  await userEvent.click(screen.getByRole('button', { name: 'Save as' }))
+  expect(screen.getByRole('button', { name: 'Save as' })).toBeTruthy()
+  expect(screen.getByLabelText('New analysis name')).toBeTruthy()
+})
+
 test('creates a copy and reports the new analysis', async () => {
   open()
   await userEvent.click(screen.getByRole('button', { name: 'Save as' }))
