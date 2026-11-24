@@ -219,6 +219,43 @@ describe('TargetWorkspace', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Unable to open this target')
   })
 
+  it('restores name, source, ingestion state, reviews, and summary when reopened', async () => {
+    // S3-004: a returning user reopens an analysis that already has an ingested dataset.
+    const body = { ...TARGET, latest_ingestion: { status: 'succeeded' } }
+    const summary = {
+      target_id: 't1',
+      review_count: 3,
+      average_rating: 3.67,
+      rating_distribution: { '1': 0, '2': 1, '3': 0, '4': 1, '5': 1 },
+      latest_ingestion: { status: 'succeeded' },
+    }
+    const reviews = [
+      { id: 'a', text: 'Great coffee', rating: 5, reviewer_name: 'Sam', review_date: '2026-01-01' },
+    ]
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        url.endsWith('/summary')
+          ? reply(200, summary)
+          : url.endsWith('/reviews')
+            ? reply(200, { reviews })
+            : reply(200, body),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    render(<TargetWorkspace accessToken="tok" targetId="t1" onBack={() => {}} />)
+
+    // (1) name, (2) source/entity context
+    expect(await screen.findByRole('heading', { name: "Joe's Coffee" })).toBeTruthy()
+    expect(screen.getByRole('link', { name: TARGET.source_url })).toBeTruthy()
+    // (3) current ingestion state
+    expect(screen.getByText('Last ingestion succeeded')).toBeTruthy()
+    // (5) ingestion summary
+    expect(await screen.findByRole('heading', { name: 'Review summary' })).toBeTruthy()
+    expect(screen.getByText('3.67')).toBeTruthy()
+    // (4) current persisted review dataset
+    expect(await screen.findByText('Great coffee')).toBeTruthy()
+  })
+
   it('goes back to the target list', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(200, TARGET)))
     const onBack = vi.fn()
