@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { createTarget, PLATFORM, TargetError } from '../api/targets'
 import type { AnalysisTarget, FieldErrors } from '../api/targets'
+import { suggestNameFromMapsUrl } from '../api/suggestName'
 
 type Props = { accessToken: string; onCreated?: () => void; onOpen?: (id: string) => void }
 
@@ -28,23 +29,37 @@ export default function CreateTargetForm({ accessToken, onCreated, onOpen }: Pro
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [created, setCreated] = useState<AnalysisTarget | null>(null)
+  const [name, setName] = useState('')
+  const [sourceUrl, setSourceUrl] = useState('')
+  // The last name we auto-suggested. We only replace a name we suggested,
+  // never one the user typed, so the user always keeps control (S3-001).
+  const [suggestedName, setSuggestedName] = useState('')
+
+  function onUrlChange(value: string) {
+    setSourceUrl(value)
+    const suggestion = suggestNameFromMapsUrl(value.trim())
+    // Fill only when the name field is empty or still holds our prior suggestion.
+    if (suggestion && (name === '' || name === suggestedName)) {
+      setName(suggestion)
+      setSuggestedName(suggestion)
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const values = new FormData(event.currentTarget)
-    const name = String(values.get('name') ?? '').trim()
-    const sourceUrl = String(values.get('source_url') ?? '').trim()
+    const trimmedName = name.trim()
+    const trimmedUrl = sourceUrl.trim()
     setError('')
 
     const missing: FieldErrors = {}
-    if (!name) missing.name = REQUIRED.name
-    if (!sourceUrl) missing.source_url = REQUIRED.source_url
+    if (!trimmedName) missing.name = REQUIRED.name
+    if (!trimmedUrl) missing.source_url = REQUIRED.source_url
     setFieldErrors(missing)
     if (Object.keys(missing).length) return
 
     setBusy(true)
     try {
-      const target = await createTarget(accessToken, { name, sourceUrl })
+      const target = await createTarget(accessToken, { name: trimmedName, sourceUrl: trimmedUrl })
       setCreated(target)
       onCreated?.()
     } catch (e) {
@@ -97,7 +112,13 @@ export default function CreateTargetForm({ accessToken, onCreated, onOpen }: Pro
           <button
             className="text-sm font-medium text-indigo-600 hover:underline"
             type="button"
-            onClick={() => setCreated(null)}
+            onClick={() => {
+              setCreated(null)
+              setName('')
+              setSourceUrl('')
+              setSuggestedName('')
+              setFieldErrors({})
+            }}
           >
             Create another target
           </button>
@@ -134,6 +155,8 @@ export default function CreateTargetForm({ accessToken, onCreated, onOpen }: Pro
         name="name"
         maxLength={255}
         placeholder="Joe's Coffee"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
         aria-invalid={Boolean(fieldErrors.name)}
         aria-describedby={fieldErrors.name ? 'target-name-error' : undefined}
       />
@@ -149,6 +172,8 @@ export default function CreateTargetForm({ accessToken, onCreated, onOpen }: Pro
         type="url"
         maxLength={2048}
         placeholder="https://www.google.com/maps/place/..."
+        value={sourceUrl}
+        onChange={(event) => onUrlChange(event.target.value)}
         aria-invalid={Boolean(fieldErrors.source_url)}
         aria-describedby={fieldErrors.source_url ? 'target-url-error' : undefined}
       />

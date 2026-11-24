@@ -138,3 +138,37 @@ test('network failure shows a connection error', async () => {
   expect((await screen.findByRole('alert')).textContent).toContain('Unable to connect')
   expect(screen.queryByRole('status')).toBeNull()
 })
+
+test('suggests an initial name from the Google Maps URL when the name is empty', async () => {
+  render(<CreateTargetForm accessToken="user-token" />)
+  const name = screen.getByLabelText('Business or place name') as HTMLInputElement
+  await userEvent.type(
+    screen.getByLabelText('Google Maps URL'),
+    'https://www.google.com/maps/place/Blue+Bottle+Coffee/@40.7,-73.9,17z',
+  )
+  expect(name.value).toBe('Blue Bottle Coffee')
+})
+
+test('does not overwrite a name the user already typed', async () => {
+  render(<CreateTargetForm accessToken="user-token" />)
+  const name = screen.getByLabelText('Business or place name') as HTMLInputElement
+  await userEvent.type(name, 'My custom name')
+  await userEvent.type(
+    screen.getByLabelText('Google Maps URL'),
+    'https://www.google.com/maps/place/Blue+Bottle+Coffee',
+  )
+  expect(name.value).toBe('My custom name')
+})
+
+test('lets the user replace the suggested name before submitting', async () => {
+  render(<CreateTargetForm accessToken="user-token" />)
+  const name = screen.getByLabelText('Business or place name') as HTMLInputElement
+  await userEvent.type(
+    screen.getByLabelText('Google Maps URL'),
+    'https://www.google.com/maps/place/Blue+Bottle+Coffee',
+  )
+  expect(name.value).toBe('Blue Bottle Coffee')
+  await userEvent.clear(name)
+  await userEvent.type(name, 'Downtown cafe')
+  expect(name.value).toBe('Downtown cafe')
+})
