@@ -131,6 +131,42 @@ export async function getTarget(accessToken: string, id: string): Promise<Target
   return { ...body, latest_ingestion: body.latest_ingestion ?? null } as TargetWorkspace
 }
 
+const RENAME_MESSAGES: Record<number, string> = {
+  400: 'Check the analysis name and try again.',
+  401: 'Your session has expired. Please sign in again.',
+  404: "This analysis doesn't exist or you don't have access to it.",
+}
+const RENAME_FALLBACK = 'Unable to rename this analysis right now. Please try again.'
+
+// Rename a saved analysis (S3-002). Only the user-facing name changes; the source URL,
+// review dataset, and Q&A data are untouched because the request sends only `name`.
+// Ownership is enforced by the backend: a non-owner gets the same 404 as a missing id.
+export async function renameTarget(
+  accessToken: string,
+  id: string,
+  name: string,
+): Promise<AnalysisTarget> {
+  let response: Response
+  try {
+    response = await fetch(`/api/targets/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+  } catch {
+    throw new TargetError(0, 'Unable to connect. Check your connection and try again.')
+  }
+  if (!response.ok) {
+    const fields = response.status === 400 ? await readFieldErrors(response) : {}
+    throw new TargetError(
+      response.status,
+      RENAME_MESSAGES[response.status] ?? RENAME_FALLBACK,
+      fields,
+    )
+  }
+  return response.json()
+}
+
 export type Review = {
   id: string
   text: string

@@ -44,6 +44,7 @@ export default function Home({ email, accessToken, busy, onLogout }: HomeProps) 
           targetId={targetId}
           onBack={() => navigate('/')}
           onSwitch={(id) => navigate(targetPath(id))}
+          onRenamed={() => setRefreshKey((n) => n + 1)}
         />
       ) : (
         <div className="mx-auto mt-2 max-w-xl">

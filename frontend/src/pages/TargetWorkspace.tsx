@@ -3,9 +3,10 @@ import IngestionStatus from '../components/IngestionStatus'
 import ReviewList from '../components/ReviewList'
 import ReviewQaGate from '../components/ReviewQaGate'
 import ReviewSummary from '../components/ReviewSummary'
+import RenameAnalysis from '../components/RenameAnalysis'
 import TargetSwitcher from '../components/TargetSwitcher'
 import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
-import type { TargetWorkspace as Workspace } from '../api/targets'
+import type { AnalysisTarget, TargetWorkspace as Workspace } from '../api/targets'
 import { skippedSentence } from '../lib/skipReasons'
 
 type Props = {
@@ -14,6 +15,8 @@ type Props = {
   onBack: () => void
   // S2-017: when provided, the header offers a switcher between the user's own targets.
   onSwitch?: (id: string) => void
+  // S3-002: called after a successful rename, so the parent can refresh its analysis list.
+  onRenamed?: () => void
 }
 type Result = { key: string; targetId: string; target: Workspace | null; error: string }
 type Ingest = {
@@ -22,7 +25,13 @@ type Ingest = {
   message: string
 }
 
-export default function TargetWorkspace({ accessToken, targetId, onBack, onSwitch }: Props) {
+export default function TargetWorkspace({
+  accessToken,
+  targetId,
+  onBack,
+  onSwitch,
+  onRenamed,
+}: Props) {
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<Result | null>(null)
   const [ingest, setIngest] = useState<Ingest | null>(null)
@@ -97,6 +106,17 @@ export default function TargetWorkspace({ accessToken, targetId, onBack, onSwitc
       }
     }
   }
+  function handleRenamed(updated: AnalysisTarget) {
+    // Update only the visible name in place; the source, review dataset, and Q&A
+    // are unchanged by a rename (S3-002), so there is no need to reload them.
+    setResult((prev) =>
+      prev && prev.target && prev.target.id === updated.id
+        ? { ...prev, target: { ...prev.target, name: updated.name } }
+        : prev,
+    )
+    onRenamed?.()
+  }
+
   const backLink = (
     <button
       type="button"
@@ -153,14 +173,25 @@ export default function TargetWorkspace({ accessToken, targetId, onBack, onSwitc
       <p className="mt-4 text-xs font-semibold tracking-wide text-indigo-600 uppercase">
         Analysis target workspace
       </p>
-      <h3
-        id="workspace-heading"
-        ref={headingRef}
-        tabIndex={-1}
-        className="mt-1 text-lg font-semibold break-words text-slate-900 focus:outline-none"
-      >
-        {target.name}
-      </h3>
+      <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
+        <h3
+          id="workspace-heading"
+          ref={headingRef}
+          tabIndex={-1}
+          className="text-lg font-semibold break-words text-slate-900 focus:outline-none"
+        >
+          {target.name}
+        </h3>
+        {/* Analysis actions. More actions (Save As, Delete, Export) can be added here. */}
+        <div className="flex flex-wrap items-center gap-2" aria-label="Analysis actions">
+          <RenameAnalysis
+            accessToken={accessToken}
+            targetId={targetId}
+            currentName={target.name}
+            onRenamed={handleRenamed}
+          />
+        </div>
+      </div>
       <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:gap-10">
         {/* Left column: target details and getting reviews into the workspace. */}
         <div>
