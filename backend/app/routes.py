@@ -5,7 +5,7 @@ from .services.ingestion import import_supplied_reviews, start_ingestion
 from .services.review_qa import answer_question
 from .services.review_storage import list_reviews
 from .services.review_summary import summarize_reviews
-from .services.targets import create_target, get_target, list_targets, update_target
+from .services.targets import create_target, get_target, list_targets, save_as_target, update_target
 
 bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -59,6 +59,21 @@ def patch_target(target_id):
         payload=request.get_json(silent=True),
     )
     return jsonify(target)
+
+
+@bp.post("/targets/<target_id>/copies")
+@require_auth
+def post_target_copy(target_id):
+    # S3-003 Save As: create a separate analysis from an owned source. Ownership is
+    # enforced inside save_as_target; a non-owner gets the same 404 as a missing id.
+    payload = request.get_json(silent=True) or {}
+    copy = save_as_target(
+        current_app.extensions["database"],
+        owner_id=g.user_id,
+        target_id=target_id,
+        name=payload.get("name"),
+    )
+    return jsonify(copy), 201
 
 
 @bp.post("/targets/<target_id>/ingestions")

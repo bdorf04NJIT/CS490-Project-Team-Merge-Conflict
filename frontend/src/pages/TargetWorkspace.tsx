@@ -4,6 +4,7 @@ import ReviewList from '../components/ReviewList'
 import ReviewQaGate from '../components/ReviewQaGate'
 import ReviewSummary from '../components/ReviewSummary'
 import RenameAnalysis from '../components/RenameAnalysis'
+import SaveAsAnalysis from '../components/SaveAsAnalysis'
 import TargetSwitcher from '../components/TargetSwitcher'
 import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
 import type { AnalysisTarget, TargetWorkspace as Workspace } from '../api/targets'
@@ -17,6 +18,9 @@ type Props = {
   onSwitch?: (id: string) => void
   // S3-002: called after a successful rename, so the parent can refresh its analysis list.
   onRenamed?: () => void
+  // S3-003: called with the new analysis after Save As, so the parent can refresh the
+  // list and open the copy.
+  onSaveAs?: (id: string) => void
 }
 type Result = { key: string; targetId: string; target: Workspace | null; error: string }
 type Ingest = {
@@ -31,6 +35,7 @@ export default function TargetWorkspace({
   onBack,
   onSwitch,
   onRenamed,
+  onSaveAs,
 }: Props) {
   const [attempt, setAttempt] = useState(0)
   const [result, setResult] = useState<Result | null>(null)
@@ -189,6 +194,12 @@ export default function TargetWorkspace({
             targetId={targetId}
             currentName={target.name}
             onRenamed={handleRenamed}
+          />
+          <SaveAsAnalysis
+            accessToken={accessToken}
+            targetId={targetId}
+            sourceName={target.name}
+            onSaved={(copy) => onSaveAs?.(copy.id)}
           />
         </div>
       </div>
