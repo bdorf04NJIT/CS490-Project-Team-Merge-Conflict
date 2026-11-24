@@ -37,6 +37,33 @@ function openEditor(currentName = 'Old name') {
 const onRenamed = vi.fn()
 afterEach(() => onRenamed.mockReset())
 
+test('closes when clicking outside the open editor', async () => {
+  render(
+    <div>
+      <button type="button">outside</button>
+      <RenameAnalysis
+        accessToken="user-token"
+        targetId="target-1"
+        currentName="Old name"
+        onRenamed={onRenamed}
+      />
+    </div>,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
+  expect(screen.getByLabelText('Analysis name')).toBeTruthy()
+  await userEvent.click(screen.getByRole('button', { name: 'outside' }))
+  expect(screen.queryByLabelText('Analysis name')).toBeNull()
+  expect(fetch).not.toHaveBeenCalled()
+})
+
+test('keeps the Rename trigger visible while the editor is open below it', async () => {
+  openEditor()
+  await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
+  // The trigger stays in place; the editor appears below it rather than replacing it.
+  expect(screen.getByRole('button', { name: 'Rename' })).toBeTruthy()
+  expect(screen.getByLabelText('Analysis name')).toBeTruthy()
+})
+
 test('renames the analysis and reports the updated target', async () => {
   openEditor()
   await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
