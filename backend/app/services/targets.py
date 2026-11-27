@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..errors import NotFound, ValidationError
 from ..models import AnalysisTarget, IngestionRun, Review
-from .review_storage import latest_run
+from .review_storage import count_reviews, latest_run
 
 PLATFORM = "google_maps"
 
@@ -148,6 +148,8 @@ def get_target(engine, *, owner_id, target_id):
         return {
             **_summary(row),
             "latest_ingestion": latest_run(engine, owner_id=owner_id, target_id=target_id),
+            # S3-009: lets the workspace offer "Refresh reviews" once a dataset exists.
+            "review_count": count_reviews(engine, owner_id=owner_id, target_id=target_id),
         }
 
 

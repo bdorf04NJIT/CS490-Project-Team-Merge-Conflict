@@ -10,7 +10,7 @@ from ..adapters.serpapi_source import SerpApiGoogleMapsSource
 from ..adapters.short_maps_links import ShortMapsLinkError, resolve_short_maps_link
 from ..errors import IngestionFailed, IngestionUnavailable, ValidationError
 from .review_normalization import normalize_reviews
-from .review_storage import persist_reviews, record_failed_run
+from .review_storage import count_reviews, persist_reviews, record_failed_run
 from .targets import find_owned_target, source_url_error
 
 logger = logging.getLogger(__name__)
@@ -95,6 +95,10 @@ def start_ingestion(engine, review_source, *, owner_id, target_id, payload):
         "imported_count": run["imported_count"],
         "skipped_count": run["skipped_count"],
         "skip_reasons": run["skip_reasons"],
+        # S3-009: a refresh merges into the existing dataset, so report what was already
+        # there and how big the current dataset is now.
+        "already_saved_count": run["already_saved_count"],
+        "review_count": count_reviews(engine, owner_id=owner_id, target_id=target_id),
     }
 
 

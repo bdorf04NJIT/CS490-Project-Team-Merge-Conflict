@@ -1,6 +1,6 @@
 """Atomic persistence and tenant-isolated reads for imported customer reviews."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..errors import NotFound
@@ -27,6 +27,10 @@ def _run_output(run):
         "total_count": run.total_count,
         "imported_count": run.imported_count,
         "skipped_count": run.skipped_count,
+        # S3-009: usable reviews the run received that the dataset already had. Derived
+        # from the stored counts (total = new + already saved + skipped), so older runs
+        # report it too and no schema change is needed.
+        "already_saved_count": max(run.total_count - run.imported_count - run.skipped_count, 0),
         "skip_reasons": {item.reason: item.count for item in run.skip_reasons},
         "message": run.message,
         "started_at": run.started_at.isoformat(),
@@ -130,6 +134,17 @@ def latest_run(engine, *, owner_id, target_id):
             .limit(1)
         )
         return _run_output(run) if run else None
+
+
+def count_reviews(engine, *, owner_id, target_id):
+    """Size of the target's current review dataset: every review saved by any run.
+
+    S3-009: a refresh adds to this dataset rather than replacing it, so this is the
+    number a user sees as "current dataset" before and after re-ingesting.
+    """
+    with Session(engine) as session:
+        _owned_target(session, target_id=target_id, owner_id=owner_id)
+        return session.scalar(select(func.count(Review.id)).where(Review.target_id == target_id))
 
 
 def list_reviews(engine, *, owner_id, target_id, offset=0):
