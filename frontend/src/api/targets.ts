@@ -104,7 +104,11 @@ export type IngestionState = {
   completed_at?: string
 }
 
-export type TargetWorkspace = AnalysisTarget & { latest_ingestion: IngestionState | null }
+export type TargetWorkspace = AnalysisTarget & {
+  latest_ingestion: IngestionState | null
+  // S3-009: size of the current review dataset; above 0, ingestion becomes a refresh.
+  review_count?: number
+}
 
 const GET_MESSAGES: Record<number, string> = {
   401: 'Your session has expired. Please sign in again.',
@@ -237,6 +241,9 @@ export type IngestionRequest = {
   imported_count?: number
   skipped_count?: number
   skip_reasons?: Record<string, number>
+  // S3-009: reviews the run received that were already saved, and the dataset size after.
+  already_saved_count?: number
+  review_count?: number
 }
 
 const INGEST_MESSAGES: Record<number, string> = {
