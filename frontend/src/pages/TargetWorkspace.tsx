@@ -7,8 +7,33 @@ import RenameAnalysis from '../components/RenameAnalysis'
 import SaveAsAnalysis from '../components/SaveAsAnalysis'
 import TargetSwitcher from '../components/TargetSwitcher'
 import { getTarget, PLATFORM, startIngestion, TargetError } from '../api/targets'
-import type { AnalysisTarget, TargetWorkspace as Workspace } from '../api/targets'
+import type { AnalysisTarget, IngestionRequest, TargetWorkspace as Workspace } from '../api/targets'
 import { skippedSentence } from '../lib/skipReasons'
+
+function plural(count: number, word: string) {
+  return `${count} ${word}${count === 1 ? '' : 's'}`
+}
+
+// S3-009: a refresh merges into the existing dataset, so say what was new, what was
+// already there, and how big the current dataset is now.
+function refreshMessage(response: IngestionRequest) {
+  const added = response.imported_count ?? 0
+  const already = response.already_saved_count ?? 0
+  return [
+    added === 0
+      ? 'Refresh complete. No new reviews found.'
+      : `Refresh complete. Added ${plural(added, 'new review')}.`,
+    already > 0
+      ? `${plural(already, 'review')} ${already === 1 ? 'was' : 'were'} already saved.`
+      : '',
+    skippedSentence(response.skipped_count ?? 0, response.skip_reasons),
+    response.review_count != null
+      ? `Current dataset: ${plural(response.review_count, 'review')}.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
 
 type Props = {
   accessToken: string
@@ -80,29 +105,38 @@ export default function TargetWorkspace({
   const ingestRequest = ingest?.targetId === targetId ? ingest : null
   const submitting = ingestRequest?.state === 'submitting'
 
-  async function handleStartIngestion() {
+  // `existingReviews` is the current dataset size when the user clicked; above 0 this is
+  // a refresh (S3-009) of an analysis that already has reviews.
+  async function handleStartIngestion(existingReviews: number) {
     if (submitting) return
+    const isRefresh = existingReviews > 0
     setIngest({ targetId, state: 'submitting', message: '' })
     try {
       const response = await startIngestion(accessToken, targetId)
       setIngest({
         targetId,
         state: response.run_status === 'partial' ? 'partial' : 'accepted',
-        message: response.run_status
-          ? [
-              `Imported ${response.imported_count} reviews.`,
-              skippedSentence(response.skipped_count, response.skip_reasons),
-            ]
-              .filter(Boolean)
-              .join(' ')
-          : 'Ingestion started for this target.',
+        message: !response.run_status
+          ? 'Ingestion started for this target.'
+          : isRefresh
+            ? refreshMessage(response)
+            : [
+                `Imported ${response.imported_count} reviews.`,
+                skippedSentence(response.skipped_count, response.skip_reasons),
+              ]
+                .filter(Boolean)
+                .join(' '),
       })
       if (response.run_status) setAttempt((n) => n + 1)
     } catch (e: unknown) {
-      const message =
+      const base =
         e instanceof TargetError
           ? e.message
           : 'Unable to start ingestion right now. Please try again.'
+      // A failed refresh saves nothing, so the existing dataset is still the current one.
+      const message = isRefresh
+        ? `${base} Your current ${plural(existingReviews, 'review')} are unchanged.`
+        : base
       setIngest({ targetId, state: 'error', message })
       // The server records a failed run for refused attempts, so reload the persisted
       // status. Skip it when the request never arrived or the session has expired.
@@ -166,6 +200,8 @@ export default function TargetWorkspace({
 
   const target = result.target
   const ingestion = target.latest_ingestion
+  const reviewCount = target.review_count ?? 0
+  const isRefresh = reviewCount > 0
 
   return (
     <section aria-labelledby="workspace-heading" className="mt-8">
@@ -240,19 +276,27 @@ export default function TargetWorkspace({
 
           <section aria-labelledby="ingest-heading" className="mt-6">
             <h4 id="ingest-heading" className="font-semibold text-slate-900">
-              Ingest reviews
+              {isRefresh ? 'Refresh reviews' : 'Ingest reviews'}
             </h4>
             <p id="ingest-help" className="mt-1 text-sm text-slate-500">
-              Import reviews from this target&apos;s saved {PLATFORM.label} source.
+              {isRefresh
+                ? `Fetch the latest reviews from this target's saved ${PLATFORM.label} source. New reviews are added to the ${plural(reviewCount, 'review')} you already have, and none are removed.`
+                : `Import reviews from this target's saved ${PLATFORM.label} source.`}
             </p>
             <button
               type="button"
               className="mt-3 w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-indigo-700 disabled:opacity-60"
               aria-describedby="ingest-help"
               disabled={submitting}
-              onClick={handleStartIngestion}
+              onClick={() => void handleStartIngestion(reviewCount)}
             >
-              {submitting ? 'Starting ingestion...' : 'Start ingestion'}
+              {isRefresh
+                ? submitting
+                  ? 'Refreshing reviews...'
+                  : 'Refresh reviews'
+                : submitting
+                  ? 'Starting ingestion...'
+                  : 'Start ingestion'}
             </button>
             {(ingestRequest?.state === 'accepted' || ingestRequest?.state === 'partial') && (
               <p

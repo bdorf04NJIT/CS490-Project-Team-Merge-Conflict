@@ -28,7 +28,15 @@ def test_owner_opens_their_target_workspace(client, auth_header):
     response = client.get(f"/api/targets/{target_id}", headers=auth_header("user-a"))
     assert response.status_code == 200
     body = response.get_json()
-    assert set(body) == {"id", "name", "platform", "source_url", "created_at", "latest_ingestion"}
+    assert set(body) == {
+        "id",
+        "name",
+        "platform",
+        "source_url",
+        "created_at",
+        "latest_ingestion",
+        "review_count",  # S3-009: current dataset size, so the UI can offer a refresh
+    }
     assert body["id"] == target_id
     assert body["name"] == "A cafe"
     assert body["platform"] == "google_maps"
